@@ -37,6 +37,7 @@ from typing import Literal, Optional
 import pandas as pd
 from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 import database as db
@@ -255,6 +256,7 @@ def rescore():
 
 
 # ---------- Retraining with new outcomes (by button, or automatically) ----------
+APP_DIR = Path(__file__).parent             # code and Leads.csv; data files stay in the working folder
 AUTO_RETRAIN_EVERY = 10                     # retrain after every 10 new finished leads
 STATE_FILE = Path("training_state.json")    # remembers how many outcomes the last training used
 training_lock = threading.Lock()
@@ -283,14 +285,15 @@ def run_retraining() -> dict:
     pd.DataFrame(rows).to_csv("new_outcomes.csv", index=False)
 
     # Profile model: train_model.py only keeps the new model if it is better on the fixed test set
-    result = subprocess.run([sys.executable, "train_model.py", "Leads.csv", "new_outcomes.csv"],
-                            capture_output=True, text=True)
+    result = subprocess.run([sys.executable, str(APP_DIR / "train_model.py"), str(APP_DIR / "Leads.csv"),
+                             "new_outcomes.csv"], capture_output=True, text=True)
     if result.returncode != 0:
         raise RuntimeError("Training failed: " + result.stderr[-500:])
     scorer.load()
 
     # Message Model: learns from what converted / not converted customers wrote
-    text_result = subprocess.run([sys.executable, "train_message_model.py"], capture_output=True, text=True)
+    text_result = subprocess.run([sys.executable, str(APP_DIR / "train_message_model.py")],
+                                 capture_output=True, text=True)
     message_model.load()
     rescored = rescore_all()                           # every lead gets the new models' score
     STATE_FILE.write_text(json.dumps({"outcomes_used": len(rows),
@@ -339,3 +342,10 @@ def learning_status():
     next_at = max(10, last + AUTO_RETRAIN_EVERY)
     return {"finished_leads": closed, "used_in_last_training": last,
             "next_training_at": next_at, "message_model": message_model.info or None}
+
+
+# ---------- The dashboard itself (after "npm run build"), so one server runs everything ----------
+# Mounted last: every API route above is matched first.
+DASHBOARD_DIR = APP_DIR / "frontend" / "dist"
+if DASHBOARD_DIR.exists():
+    app.mount("/", StaticFiles(directory=DASHBOARD_DIR, html=True), name="dashboard")

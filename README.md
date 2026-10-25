@@ -28,6 +28,23 @@ FastAPI + SQLite backend that scores leads with our trained ML model.
 
 `leads.db` (the SQLite database) is created automatically on first run.
 
+## Deploy on Railway
+
+The `Dockerfile` builds the React dashboard and runs FastAPI, which serves the API **and** the dashboard on one address (no separate frontend server, no CORS setup).
+
+1. Push this repository to GitHub.
+2. railway.com → **New Project → Deploy from GitHub repo** → pick the repository. Railway finds the `Dockerfile` and `railway.json` itself.
+3. **Add a volume** (service → **Settings → Volumes**, or right-click the service → *Attach volume*) with mount path **`/data`**. This keeps `leads.db`, retrained models and `training_state.json` across redeploys. Without it, every redeploy starts with an empty database.
+4. Service → **Variables**: add the values from `.env.example` that you use (`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM`, `EMAIL_WEBHOOK_TOKEN`, ...). `PORT` is set by Railway.
+5. Service → **Settings → Networking → Generate Domain**. Open the `https://...up.railway.app` link: onboarding appears.
+6. Webhooks no longer need cloudflared: use `https://<your-domain>/webhook/twilio`, `/webhook/email` and `/enquiry`. The Connect page fills in the domain automatically.
+
+Without GitHub: `npm i -g @railway/cli`, `railway login`, `railway init`, then `railway up` from this folder (still add the volume in step 3).
+
+> **No login yet.** Anyone who has the link can open the dashboard and read every lead. Use it for demos with test data, or add a login before real customers' details go in.
+
+Local development is unchanged: `uvicorn app:app --reload` plus `npm run dev` in `frontend/`.
+
 ## Endpoints
 
 | Method | URL | Operation | What it does |

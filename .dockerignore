@@ -1,0 +1,17 @@
+.git
+.env
+.venv
+**/__pycache__
+**/node_modules
+frontend/dist
+review2_build
+*.pptx
+*.pdf
+leads.db
+*.db
+backup_*
+sales_conversations.csv
+lead_model_previous.pkl
+message_model.pkl
+new_outcomes.csv
+training_state.json

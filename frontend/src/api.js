@@ -1,6 +1,8 @@
 // api.js - every call from the website to the FastAPI backend goes through here.
 
-export const API_URL = "http://127.0.0.1:8000";
+// In development the backend runs separately on port 8000. In the deployed build the backend
+// serves this website itself, so calls go to the same address ("").
+export const API_URL = import.meta.env.VITE_API_URL ?? (import.meta.env.DEV ? "http://127.0.0.1:8000" : "");
 
 // Sends a request and returns the JSON reply.
 // If the backend rejects the data (422), the error carries a { field: message } map

@@ -1,0 +1,27 @@
+# One image for Railway (or any Docker host): builds the React dashboard, then runs FastAPI,
+# which serves both the API and the dashboard on the same address.
+
+# ---- 1. Build the dashboard ----
+FROM node:22-slim AS dashboard
+WORKDIR /frontend
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+COPY frontend/ ./
+RUN npm run build
+
+# ---- 2. Backend ----
+FROM python:3.12-slim
+ENV PYTHONUNBUFFERED=1
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY *.py Leads.csv lead_model.pkl test_set.csv demo_chats.csv ./
+COPY public/ public/
+COPY --from=dashboard /frontend/dist frontend/dist
+
+# Data that must survive redeploys lives in /data (attach a Railway volume there):
+# leads.db, the retrained models, test_set.csv and training_state.json.
+# The first start copies in the trained model and the fixed test set; later starts keep yours.
+WORKDIR /data
+CMD for f in lead_model.pkl test_set.csv; do [ -f "/data/$f" ] || cp "/app/$f" /data/; done; \
+    exec uvicorn app:app --app-dir /app --host 0.0.0.0 --port ${PORT:-8000}

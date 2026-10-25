@@ -8,7 +8,10 @@ import { api, API_URL } from "../api";
 // remembered next time (the backend itself cannot know it).
 function usePublicLink() {
   const [link, setLink] = useState(() => {
-    try { return localStorage.getItem("public_link") || ""; } catch { return ""; }
+    let saved = "";
+    try { saved = localStorage.getItem("public_link") || ""; } catch { /* private mode */ }
+    // Deployed on https (e.g. Railway): this website's own address is the public link
+    return saved || (window.location.protocol === "https:" ? window.location.origin : "");
   });
   const save = (value) => {
     setLink(value);
