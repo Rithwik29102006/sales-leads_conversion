@@ -1,0 +1,10 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+node_modules/
+.DS_Store
+leads.db
+backup_*/
+sales_conversations.csv
+lead_model_previous.pkl

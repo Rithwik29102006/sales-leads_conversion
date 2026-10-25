@@ -1,0 +1,33 @@
+name,channel,customer_type,interested_in,customer_message,outcome
+Arjun,WhatsApp,Working Professional,Cars,"Hi, what is the on-road price of the Swift VXI? I want to book this week",Converted
+Sneha,WhatsApp,Working Professional,Cars,Can I come for a test drive tomorrow evening?,Converted
+Kiran,Instagram,Business Owner,Cars,Is the red colour available in stock? I am ready to pay the advance,Converted
+Divya,WhatsApp,Student,Spoken English Course,"Please send the fee details, I want to join the weekend batch",Converted
+Ramesh,Website,Working Professional,Coding Course,What documents are needed for admission? Want to enroll my son this month,Converted
+Lakshmi,WhatsApp,Homemaker,Sofa Set,Can you call me at 6pm? I want to finalise the sofa set,Converted
+Vikram,Facebook,Working Professional,Furniture,Do you deliver to Kukatpally? I will order the 3 seater today,Converted
+Pooja,Instagram,Working Professional,Bridal Makeup,Bridal makeup package price for 15 Dec? Want to book the date,Converted
+Rahul,WhatsApp,Student,iPhone 15,Is EMI available on iPhone 15? Will buy if EMI is there,Converted
+Suresh,WhatsApp,Business Owner,T-shirt Printing,"Need 50 t-shirts printed with our logo by Friday, send quotation",Converted
+Anjali,Referral,Working Professional,Gym Membership,"My friend referred you. Please share the plan, we want to start immediately",Converted
+Mohan,Website,Business Owner,Website Design,Can we fix a meeting for the website design? Budget is approved,Converted
+Fatima,WhatsApp,Working Professional,Homestay,"Booking for 4 people this Saturday, is the room available?",Converted
+Ganesh,WhatsApp,Business Owner,Accounting Software,Send me the payment link please,Converted
+Meera,Instagram,Student,Dance Classes,What time does the demo class start? I will attend today,Converted
+Ravi,WhatsApp,Working Professional,Washing Machine,"I compared other shops, your price is fine. How do I proceed?",Converted
+Teja,WhatsApp,Student,Cars,Hi,Not Converted
+Naveen,Instagram,Unemployed,Cars,Just checking prices,Not Converted
+Swathi,Facebook,Homemaker,Sofa Set,"Too expensive, any cheaper option?",Not Converted
+Ajay,Website,Student,Coding Course,"Send brochure, will see later",Not Converted
+Prakash,WhatsApp,Working Professional,Gym Membership,"Not interested now, maybe next year",Not Converted
+Kavya,WhatsApp,Student,Dance Classes,Ok thanks,Not Converted
+Sai,Instagram,Student,iPhone 15,How much? Other shop is giving 20% less,Not Converted
+Harish,WhatsApp,Unemployed,Gym Membership,Is there any free trial?,Not Converted
+Nikhil,Website,Student,Website Design,"I am a student, just asking for my college project",Not Converted
+Usha,WhatsApp,Homemaker,Cars,Will discuss with family and let you know,Not Converted
+Venkat,WhatsApp,Other,Furniture,Sorry wrong number,Not Converted
+Bhavana,Email,Working Professional,Spoken English Course,Can you send the details on email,Not Converted
+Manoj,Google Search,Unemployed,Cars,What is the price of the cheapest model,Not Converted
+Sravani,Instagram,Student,iPhone 15,Any offers? I will wait for the Diwali sale,Not Converted
+Deepak,Facebook,Other,Accounting Software,Looking for information only,Not Converted
+Rekha,WhatsApp,Homemaker,Bridal Makeup,"Please don't call, I was only asking",Not Converted

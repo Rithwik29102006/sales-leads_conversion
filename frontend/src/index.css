@@ -1,0 +1,14 @@
+@import "tailwindcss";
+
+/* Project colours (same as our presentation) */
+@theme {
+  --color-navy: #13315c;
+  --color-navy-light: #eaf1f8;
+  --color-brand-green: #1e7a46;
+  --color-brand-orange: #c45f16;
+}
+
+body {
+  @apply bg-slate-50 text-slate-800;
+  font-family: Arial, Helvetica, sans-serif;
+}
