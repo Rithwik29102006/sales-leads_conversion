@@ -5,7 +5,7 @@ ENV PYTHONUNBUFFERED=1
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-COPY *.py Leads.csv lead_model.pkl test_set.csv demo_chats.csv ./
+COPY *.py Leads.csv lead_model.pkl test_set.csv demo_chats.csv intent_model.pkl intent_train.csv intent_test.csv ./
 COPY public/ public/
 
 # Data that must survive redeploys lives in /data (the Render disk in render.yaml is mounted there):

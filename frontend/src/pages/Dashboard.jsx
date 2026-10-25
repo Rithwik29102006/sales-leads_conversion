@@ -94,9 +94,11 @@ export default function Dashboard({ onOpenLead, onAddLead, onConnect, onFollowup
                 </thead>
                 <tbody>
                   {rows.map((l) => (
-                    <tr key={l.id} className="row-click" onClick={() => onOpenLead(l.id)}>
+                    <tr key={l.id} className="row-click" tabIndex={0} aria-label={`Open lead ${l.name}`}
+                      onClick={() => onOpenLead(l.id)}
+                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpenLead(l.id); } }}>
                       <td className="td-name">
-                        <button type="button" className="lead-link" onClick={(e) => { e.stopPropagation(); onOpenLead(l.id); }}>{l.name}</button>
+                        <span className="lead-name">{l.name}</span>
                         <div style={{ marginTop: 6 }}><Tags tags={l.intent_tags} /></div>
                       </td>
                       <td data-label="Channel"><Channel name={l.channel} /></td>

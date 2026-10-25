@@ -1,0 +1,96 @@
+text,intent
+No I don't need,no
+I have no money and I do not plan to buy anything,no
+Hi,hi
+Hii,hi
+Not interested,no
+"Sorry, I'm not looking to buy anything right now",no
+"Thanks, but I'll pass on this one",no
+It is way above my budget,no
+I've already got a car,no
+Please stop texting me,no
+Who gave you my number?,no
+We don't require this service,no
+"Nah, not needed",no
+I'm not going to purchase it,no
+Too pricey for me,no
+"Mujhe ye nahi lena",no
+Don't contact me again,no
+I bought from a different dealer,no
+I won't be buying,no
+"No sir, I don't want",no
+Never mind I don't need it anymore,no
+I can't pay that much,no
+Kindly remove me from your list,no
+"No, thank you",no
+I'm not buying anything,no
+I want to buy the Creta this week,buy
+Please book the family biryani for 8 pm,buy
+Book my order,buy
+I'll take the red one,buy
+"Ok, confirm the booking",buy
+Send the UPI details I'll transfer now,buy
+I want to enroll in the batch starting Monday,buy
+Can I place an order for 3 cakes,buy
+I'm ready to pay the token amount,buy
+Let's finalize the deal,buy
+Need two plates of chicken 65 now,buy
+I'd like to purchase the iPhone today,buy
+Please deliver it tomorrow morning,buy
+Go ahead with the order,buy
+Ok I will buy it,buy
+Mujhe ek AC chahiye kal tak,buy
+I want to sign up for the yearly plan,buy
+Reserve a table for 4 tonight,buy
+Where do I pay?,buy
+Yes book it,buy
+What is the on road price of Swift?,ask
+How much does the course cost?,ask
+Price of chicken biryani?,ask
+Is the black colour available?,ask
+Do you have this in size M?,ask
+What's the mileage of this car?,ask
+Can you share the specs,ask
+Do you provide home delivery?,ask
+How many days for delivery,ask
+Any discount for students?,ask
+Can I get it on EMI,ask
+Can I come for a test drive tomorrow?,ask
+Please call me after 6,ask
+What time do you open?,ask
+Where is the shop located?,ask
+Is there a warranty?,ask
+Do you have a vegetarian menu?,ask
+What all is included in the package?,ask
+Kitne ka hai?,ask
+Can you send some pictures?,ask
+Which model is best for a family of five?,ask
+Is the fee refundable?,ask
+"I'll think and tell you",later
+"Let me discuss with my husband",later
+Maybe next month,later
+Just checking,later
+I'm only window shopping,later
+Not now maybe later,later
+I'll get back to you soon,later
+Need time to decide,later
+Still comparing with other shops,later
+Will tell you after Diwali,later
+Let me see,later
+I'm not sure yet,later
+"Ok, I will let you know",later
+Thinking about it,later
+"Baad me dekhenge",later
+I'll plan it next year,later
+Good morning,hi
+Hello sir,hi
+Thank you,hi
+Ok,hi
+Okay thanks,hi
+👍,hi
+Thanks a lot,hi
+"Hey there",hi
+Bye,hi
+Hmm ok,hi
+Namaste,hi
+Noted,hi

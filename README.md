@@ -8,6 +8,7 @@ FastAPI + SQLite backend that scores leads with our trained ML model.
 |---|---|
 | `app.py` | FastAPI app and Orchestrator: receives requests, calls the agents, returns results |
 | `agents.py` | Lead Analysis, Lead Scoring (ML model), Follow-up, Message and Analytics agents |
+| `intent_model.py` | Message intent model: each customer message -> buy / ask / later / no / hi (94.7% on 95 unseen hand-written messages vs 61% for keyword rules). Rebuild with `python build_intent_data.py && python train_intent_model.py` |
 | `database.py` | Database tables and the four operations: insert, retrieve, update, delete (SQLite on your computer, Postgres when `DATABASE_URL` is set) |
 | `train_model.py` | Trains the model (already done) and is reused by `/retrain` |
 | `lead_model.pkl`, `Leads.csv`, `test_set.csv` | Trained model, dataset, fixed test set (from training) |

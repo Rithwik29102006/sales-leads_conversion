@@ -163,6 +163,13 @@ def product_summary(product: dict) -> str:
     return f"*{product['name']}*\n" + "\n".join(parts)
 
 
+def not_interested_reply(first: str, business: dict) -> str:
+    """Polite close when the customer says they don't need anything: no prices, no pushing."""
+    shop = (business or {}).get("name") or "us"
+    return (f"No problem, {first}! 🙏 Thank you for your time. "
+            f"If you ever need anything, just message {shop} here.")
+
+
 def answer_question(text: str, lead: dict, business: dict, products: list) -> Optional[str]:
     """Reply with the owner's real details when the customer asks about price, details,
     availability, delivery or timings. None = nothing we can answer automatically."""
@@ -171,6 +178,9 @@ def answer_question(text: str, lead: dict, business: dict, products: list) -> Op
     text = fix_typos(text)
     low = text.lower()
     tags = agents.analyse_conversation(text)
+    if tags == ["Not interested"]:
+        first = (lead.get("name") or "").split(" ")[0] or "there"
+        return not_interested_reply(first, business)
     wants_price = "Asked about price" in tags
     wants_availability = any(has_word(low, w) for w in AVAILABILITY_WORDS)
     wants_details = ("Asked about product details" in tags and not wants_availability) or any(
@@ -333,6 +343,8 @@ def next_reply(lead: dict, text: str, business: dict, products: list) -> Tuple[d
 
     if step == "concern":                       # their question: keep it and answer from the owner's details
         changes["customer_message"] = add_to_history(lead, text)
+        if agents.analyse_conversation(text) == ["Not interested"]:     # "No I don't need"
+            return changes, not_interested_reply(first, business)
         answer = answer_question(text, {**lead, **changes}, business, products)
         if not answer:                          # not sure what they asked: show the product they chose
             chosen = [p for p in products if p["name"] == lead.get("interested_in")]

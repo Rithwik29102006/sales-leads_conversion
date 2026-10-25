@@ -12,3 +12,5 @@ frontend/dist/
 message_model.pkl
 new_outcomes.csv
 training_state.json
+bitext.csv
+clinc.json

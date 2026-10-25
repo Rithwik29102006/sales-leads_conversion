@@ -18,6 +18,8 @@ import numpy as np
 import pandas as pd
 import joblib
 
+from intent_model import IntentModel, split_lines
+
 MODEL_FILE = "lead_model.pkl"
 
 # ---------------------------------------------------------------------------
@@ -304,8 +306,8 @@ NEGATED_BUYING = re.compile(
     r"(?:\s+\w+){0,3}?\s+(?:buy|buying|purchase|purchasing|order|ordering|book|booking|interested)\b")
 
 
-def analyse_conversation(message) -> list:
-    """Return the buying-signal tags found in the customer's message."""
+def keyword_tags(message) -> list:
+    """The keyword rules: which signal words appear in the text."""
     if not message:
         return []
     text = message.lower().replace("\u2019", "'")     # phones type a curly apostrophe: don’t
@@ -316,6 +318,48 @@ def analyse_conversation(message) -> list:
         tags = ["Not interested"]
     if not tags and only_greeting(message):
         tags = ["Only said hi"]
+    return tags
+
+
+# The intent model (intent_model.py) decides what each message MEANS: buy / ask / later / no / hi.
+# The keyword rules above only add the details (price, specs, call, discount) for the "Why" text.
+INTENT_MODEL = IntentModel()
+OPTION_WORDS = re.compile(r"\b(emi|loan|finance|installments?|instalments?|delivery|installation|"
+                          r"warranty|insurance|gift wrap|accessories)\b")
+DETAIL_TAGS = ("Asked about price", "Asked about product details", "Asked for a call or demo",
+               "Asked about discounts", "Comparing options")
+
+
+def analyse_conversation(message) -> list:
+    """Return the buying-signal tags for the customer's messages.
+    The LATEST message that says something decides: "No I don't need" after "Hi" -> Not interested,
+    "Book it" after "I'll think" -> Wants to buy soon."""
+    if not message:
+        return []
+    lines = split_lines(message)
+    intents = INTENT_MODEL.predict(lines)
+    if not lines or intents[0][0] is None:            # no model available: keyword rules only
+        return keyword_tags(message)
+    # a clear refusal phrase ("not needed", "stop messaging") is always a "no", whatever the model says
+    intents = [("no", 1.0) if keyword_tags(line) == ["Not interested"] else found
+               for line, found in zip(lines, intents)]
+    said = [(line, intent) for line, (intent, _) in zip(lines, intents) if intent != "hi"
+            # "I don't need EMI / delivery" turns down an option, not the purchase
+            and not (intent == "no" and len(lines) > 1 and OPTION_WORDS.search(line.lower()))]
+    if not said:
+        return ["Only said hi"]
+    last_line, last = said[-1]
+    if last == "no" or keyword_tags(last_line) == ["Not interested"]:
+        return ["Not interested"]
+    tags = []
+    if last == "later":
+        tags.append("Just browsing")
+    elif any(intent == "buy" for _, intent in said) or (
+            last == "ask" and "Wants to buy soon" in keyword_tags(last_line)):   # "I want to buy, price?"
+        tags.append("Wants to buy soon")
+    tags += [t for t in keyword_tags(message) if t in DETAIL_TAGS]
+    if not tags and any(intent == "ask" for _, intent in said):
+        tags.append("Has questions")
     return tags
 
 
