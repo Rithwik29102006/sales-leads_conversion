@@ -1,0 +1,23 @@
+# Render Blueprint: Render → New → Blueprint → pick this repository.
+# One web service built from the Dockerfile; the disk at /data keeps leads.db and the
+# retrained models across deploys (a disk needs a paid plan, "starter" is the smallest).
+services:
+  - type: web
+    name: lead-conversion
+    runtime: docker
+    plan: starter
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /options
+    disk:
+      name: data
+      mountPath: /data
+      sizeGB: 1
+    envVars:                    # sync: false = Render asks for the value when the Blueprint is created
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_WHATSAPP_FROM
+        value: whatsapp:+14155238886
+      - key: EMAIL_WEBHOOK_TOKEN
+        sync: false

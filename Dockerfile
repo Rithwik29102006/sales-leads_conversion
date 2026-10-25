@@ -1,4 +1,4 @@
-# One image for Railway (or any Docker host): builds the React dashboard, then runs FastAPI,
+# One image for Render (or any Docker host): builds the React dashboard, then runs FastAPI,
 # which serves both the API and the dashboard on the same address.
 
 # ---- 1. Build the dashboard ----
@@ -19,7 +19,7 @@ COPY *.py Leads.csv lead_model.pkl test_set.csv demo_chats.csv ./
 COPY public/ public/
 COPY --from=dashboard /frontend/dist frontend/dist
 
-# Data that must survive redeploys lives in /data (attach a Railway volume there):
+# Data that must survive redeploys lives in /data (the Render disk in render.yaml is mounted there):
 # leads.db, the retrained models, test_set.csv and training_state.json.
 # The first start copies in the trained model and the fixed test set; later starts keep yours.
 WORKDIR /data

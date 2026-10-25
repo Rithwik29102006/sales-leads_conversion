@@ -28,18 +28,17 @@ FastAPI + SQLite backend that scores leads with our trained ML model.
 
 `leads.db` (the SQLite database) is created automatically on first run.
 
-## Deploy on Railway
+## Deploy on Render
 
-The `Dockerfile` builds the React dashboard and runs FastAPI, which serves the API **and** the dashboard on one address (no separate frontend server, no CORS setup).
+The `Dockerfile` builds the React dashboard and runs FastAPI, which serves the API **and** the dashboard on one address (no separate frontend server, no CORS setup). `render.yaml` describes the service for Render.
 
-1. Push this repository to GitHub.
-2. railway.com → **New Project → Deploy from GitHub repo** → pick the repository. Railway finds the `Dockerfile` and `railway.json` itself.
-3. **Add a volume** (service → **Settings → Volumes**, or right-click the service → *Attach volume*) with mount path **`/data`**. This keeps `leads.db`, retrained models and `training_state.json` across redeploys. Without it, every redeploy starts with an empty database.
-4. Service → **Variables**: add the values from `.env.example` that you use (`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM`, `EMAIL_WEBHOOK_TOKEN`, ...). `PORT` is set by Railway.
-5. Service → **Settings → Networking → Generate Domain**. Open the `https://...up.railway.app` link: onboarding appears.
-6. Webhooks no longer need cloudflared: use `https://<your-domain>/webhook/twilio`, `/webhook/email` and `/enquiry`. The Connect page fills in the domain automatically.
+1. Push this repository to GitHub (or GitLab).
+2. dashboard.render.com → **New → Blueprint** → connect the repository. Render reads `render.yaml`.
+3. Fill in the values it asks for (`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `EMAIL_WEBHOOK_TOKEN`; leave any blank you don't use) → **Apply**. `PORT` is set by Render.
+4. When the deploy is live, open the `https://lead-conversion-xxxx.onrender.com` link: onboarding appears.
+5. Webhooks no longer need cloudflared: use `https://<your-link>/webhook/twilio`, `/webhook/email` and `/enquiry`. The Connect page fills in the link automatically.
 
-Without GitHub: `npm i -g @railway/cli`, `railway login`, `railway init`, then `railway up` from this folder (still add the volume in step 3).
+**Plan and data:** the 1 GB disk at `/data` keeps `leads.db`, retrained models and `training_state.json` across deploys and restarts. Disks need a paid plan, so `render.yaml` uses **Starter**. To try it for free, change `plan: starter` to `plan: free` and delete the `disk:` block, but then **every deploy or restart wipes all leads**, and the free service sleeps after 15 minutes idle (the first request then takes ~1 minute, which can make Twilio give up on a message).
 
 > **No login yet.** Anyone who has the link can open the dashboard and read every lead. Use it for demos with test data, or add a login before real customers' details go in.
 
