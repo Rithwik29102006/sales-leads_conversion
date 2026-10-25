@@ -332,6 +332,8 @@ def keyword_tags(message) -> list:
 # The intent model (intent_model.py) decides what each message MEANS: buy / ask / later / no / hi.
 # The keyword rules above only add the details (price, specs, call, discount) for the "Why" text.
 INTENT_MODEL = IntentModel()
+# in a question, only a real buying word counts ("Is it available today?" is still just a question)
+BUY_VERBS = re.compile(r"\b(buy|buying|purchase|order|book|booking|reserve|enroll|enrol|pay)\b")
 OPTION_WORDS = re.compile(r"\b(emi|loan|finance|installments?|instalments?|delivery|installation|"
                           r"warranty|insurance|gift wrap|accessories)\b")
 DETAIL_TAGS = ("Asked about price", "Asked about product details", "Asked for a call or demo",
@@ -363,7 +365,7 @@ def analyse_conversation(message) -> list:
     if last == "later":
         tags.append("Just browsing")
     elif any(intent == "buy" for _, intent in said) or (
-            last == "ask" and "Wants to buy soon" in keyword_tags(last_line)):   # "I want to buy, price?"
+            last == "ask" and BUY_VERBS.search(last_line.lower())):   # "I want to buy, what's the price?"
         tags.append("Wants to buy soon")
     tags += [t for t in keyword_tags(message) if t in DETAIL_TAGS]
     if not tags and any(intent == "ask" for _, intent in said):
@@ -392,6 +394,10 @@ SIGNAL_WEIGHTS = {
 MAX_BOOST = 5.0                   # all signals together can raise the odds at most 5 times
 
 
+INFO_ONLY = {"Asked about price", "Asked about product details", "Has questions", "Asked about discounts",
+             "Comparing options", "Not in our product list"}
+
+
 def apply_signals(model_result: dict, tags: list, cutoffs: dict,
                   message: str = None, message_model=None) -> dict:
     """Combine the profile score (ML model) with the customer's message.
@@ -410,6 +416,10 @@ def apply_signals(model_result: dict, tags: list, cutoffs: dict,
     boost = min(boost, MAX_BOOST)
     odds = profile / (1 - profile) if profile < 1 else 99.0
     final = (odds * boost) / (1 + odds * boost)
+    # Only asked for information (price, delivery, availability, details) and stopped there:
+    # interested, but not hot yet -> at most MEDIUM. A buying signal or a call request can make it HIGH.
+    if tags and all(t in INFO_ONLY for t in tags) and final >= cutoffs["high"]:
+        final = cutoffs["high"] - 0.01
     if "Not interested" in tags or final < cutoffs["medium"]:
         priority = "LOW"
     elif final >= cutoffs["high"]:

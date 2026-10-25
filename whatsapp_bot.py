@@ -163,6 +163,21 @@ def product_summary(product: dict) -> str:
     return f"*{product['name']}*\n" + "\n".join(parts)
 
 
+CLOSING_WORDS = {"no", "nope", "nah", "nothing", "else", "thanks", "thank", "thankyou", "you", "ok", "okay", "k",
+                 "fine", "thats", "that", "s", "is", "it", "all", "bye", "sir", "madam", "mam", "good", "great",
+                 "done", "noted", "sure", "for", "now", "cool"}
+
+
+def is_closing(text: str) -> bool:
+    """'No', 'nothing else', 'ok thanks', 'that's all' after "Anything else?" = they are done asking."""
+    words = re.findall(r"[a-z]+", text.lower().replace("\u2019", "'"))
+    return all(w in CLOSING_WORDS for w in words)
+
+
+def team_will_contact(first: str) -> str:
+    return f"Thank you {first}! 🙏 Our team will contact you soon."
+
+
 def not_interested_reply(first: str, business: dict) -> str:
     """Polite close when the customer says they don't need anything: no prices, no pushing."""
     shop = (business or {}).get("name") or "us"
@@ -350,7 +365,8 @@ def next_reply(lead: dict, text: str, business: dict, products: list) -> Tuple[d
             chosen = [p for p in products if p["name"] == lead.get("interested_in")]
             answer = product_summary(chosen[0]) if chosen else None
         if answer:
-            return changes, (f"{answer}\n\nAnything else, {first}? Our team will also contact you shortly. 🙏")
+            changes["chat_step"] = "anything_else"         # their next message decides what we say
+            return changes, f"{answer}\n\nAnything else, {first}?"
         return changes, f"Thank you {first}! 🙏 Our team will get back to you shortly about this."
 
     thanks = f"Thanks {first}! " if step == "name" else ""

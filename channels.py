@@ -189,14 +189,26 @@ def receive_whatsapp(wa_id: str, name: Optional[str], text: str) -> dict:
         db.update_lead(existing["id"], changes)
         return {"lead_id": existing["id"], "action": "details", "reply": reply}
 
+    first = (existing.get("name") or "").split(" ")[0] or "there"
+    if existing.get("chat_step") == "anything_else" and bot.is_closing(text):
+        # "No" / "nothing" / "ok thanks" after "Anything else?" = done asking, NOT "not interested"
+        db.update_lead(existing["id"], {"chat_step": "done"})
+        return {"lead_id": existing["id"], "action": "closed", "reply": bot.team_will_contact(first)}
+
     lead = add_message_to_lead(existing, text)
+    step = "done"
     if agents.only_greeting(text):                            # "Hi" again from a known customer
         reply = bot.welcome_back(lead, business, products)
+    elif agents.analyse_conversation(text) == ["Not interested"]:
+        reply = bot.not_interested_reply(first, business)
     else:
         reply = bot.answer_question(text, lead, business, products)
-    if not reply:                                             # nothing to answer automatically
-        first = (lead.get("name") or "").split(" ")[0] or "there"
-        reply = f"Thank you {first}! 🙏 Our team will contact you soon."
+        if reply:                                             # we had the answer: ask if there is more
+            reply += f"\n\nAnything else, {first}?"
+            step = "anything_else"
+        else:                                                 # nothing to answer automatically
+            reply = bot.team_will_contact(first)
+    db.update_lead(lead["id"], {"chat_step": step})
     return {"lead_id": lead["id"], "action": "updated", "reply": reply}
 
 
