@@ -36,8 +36,7 @@ The `Dockerfile` runs the FastAPI backend; `render.yaml` describes the service.
 1. Push this repository to GitHub.
 2. dashboard.render.com → **New → Web Service** → pick the repository.
    - Language / Runtime: **Docker** (found automatically). Root directory: leave empty.
-   - Instance type: **Starter** (needed for the disk).
-   - **Advanced → Add Disk**: mount path **`/data`**, size 1 GB.
+   - Instance type: **Free** works (see the limits below). With **Starter**, also add **Advanced → Add Disk**: mount path **`/data`**, size 1 GB.
    - **Health Check Path**: `/options`.
    - **Environment Variables**: the values from `.env.example` you use (`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM`, `EMAIL_WEBHOOK_TOKEN`). `PORT` is set by Render.
 
@@ -53,7 +52,9 @@ The `Dockerfile` runs the FastAPI backend; `render.yaml` describes the service.
 
 If you change `VITE_API_URL` later, redeploy on Vercel (it is built into the website).
 
-**Plan and data:** the 1 GB disk at `/data` keeps `leads.db`, retrained models and `training_state.json` across deploys and restarts. Disks need a paid plan, so `render.yaml` uses **Starter**. To try it for free, change `plan: starter` to `plan: free` and delete the `disk:` block, but then **every deploy or restart wipes all leads**, and the free service sleeps after 15 minutes idle (the first request then takes ~1 minute, which can make Twilio give up on a message).
+**Free plan limits:**
+- **No disk:** every deploy or restart (including after sleeping) wipes leads, the business profile and retrained models; the app starts again from onboarding with the original model. Fine for demos. For real use, pay for Starter + disk.
+- **Sleeps after 15 minutes idle:** the next request takes about a minute while it wakes. Twilio waits only 15 seconds, so the first WhatsApp message after a sleep can be lost. A free uptime pinger (e.g. cron-job.org or UptimeRobot) calling `https://<your-service>.onrender.com/options` every 10 minutes keeps it awake; the free plan's 750 hours a month cover one service running all month. Staying awake also avoids the wipe that comes with waking up.
 
 > **No login yet.** Anyone who has the link can open the dashboard and read every lead. Use it for demos with test data, or add a login before real customers' details go in.
 
