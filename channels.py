@@ -194,6 +194,9 @@ def receive_whatsapp(wa_id: str, name: Optional[str], text: str) -> dict:
         reply = bot.welcome_back(lead, business, products)
     else:
         reply = bot.answer_question(text, lead, business, products)
+    if not reply:                                             # nothing to answer automatically
+        first = (lead.get("name") or "").split(" ")[0] or "there"
+        reply = f"Thank you {first}! 🙏 Our team will contact you soon."
     return {"lead_id": lead["id"], "action": "updated", "reply": reply}
 
 
