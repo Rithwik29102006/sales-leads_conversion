@@ -1,7 +1,7 @@
 """
 train_message_model.py - learn which customer messages lead to a sale, from YOUR OWN chats.
 
-Data: leads in leads.db that the sales team marked Converted / Not Converted, and what
+Data: leads in the database that the sales team marked Converted / Not Converted, and what
       those customers wrote (WhatsApp, website form ...).
 Model: TF-IDF (turns text into word scores) + Logistic Regression (learns a weight per word).
 It is only saved if it predicts better than guessing on chats it has not seen
@@ -13,7 +13,6 @@ Why not a public dataset? We tested 40,000 public sales conversations
 fit small-business customers, so the system learns from the business's own customers instead.
 """
 
-import sqlite3
 import sys
 from datetime import datetime
 
@@ -25,16 +24,18 @@ from sklearn.model_selection import StratifiedKFold, cross_val_predict
 from sklearn.metrics import roc_auc_score
 from sklearn.pipeline import make_pipeline
 
-DB_FILE, MODEL_FILE = "leads.db", "message_model.pkl"
+import database as db
+
+MODEL_FILE = "message_model.pkl"
 MIN_PER_GROUP = 15          # need at least 15 converted AND 15 not-converted chats
 MIN_AUC = 0.60              # 0.5 = guessing; below this the model is not trusted
 
-with sqlite3.connect(DB_FILE) as conn:
+with db.get_connection() as conn:          # SQLite or Postgres, same as the backend
     rows = conn.execute("SELECT customer_message, status FROM leads WHERE status IN "
                         "('Converted', 'Not Converted') AND customer_message IS NOT NULL "
                         "AND TRIM(customer_message) != ''").fetchall()
-texts = [r[0] for r in rows]
-y = np.array([1 if r[1] == "Converted" else 0 for r in rows])
+texts = [r["customer_message"] for r in rows]
+y = np.array([1 if r["status"] == "Converted" else 0 for r in rows])
 converted, not_converted = int(y.sum()), int(len(y) - y.sum())
 print(f"Chats with an outcome: {len(y)} ({converted} converted, {not_converted} not converted)")
 

@@ -51,6 +51,7 @@ app = FastAPI(title="Lead Conversion Intelligence System")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 db.create_tables()
+db.restore_files()                         # retrained models kept in Postgres (no disk on Render free)
 scorer = agents.LeadScoringAgent()
 message_model = agents.MessageModel()      # learned from your own chats once outcomes exist
 
@@ -297,6 +298,7 @@ def run_retraining() -> dict:
     rescored = rescore_all()                           # every lead gets the new models' score
     STATE_FILE.write_text(json.dumps({"outcomes_used": len(rows),
                                       "trained_at": datetime.now().isoformat(timespec="seconds")}))
+    db.save_files()                                    # keep the new models if the server restarts
     return {"outcomes_used": len(rows), "rescored": rescored,
             "training_output": result.stdout.splitlines()[-3:],
             "message_model": (text_result.stdout or text_result.stderr).strip().splitlines()[-2:]}

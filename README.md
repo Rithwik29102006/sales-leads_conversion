@@ -8,7 +8,7 @@ FastAPI + SQLite backend that scores leads with our trained ML model.
 |---|---|
 | `app.py` | FastAPI app and Orchestrator: receives requests, calls the agents, returns results |
 | `agents.py` | Lead Analysis, Lead Scoring (ML model), Follow-up, Message and Analytics agents |
-| `database.py` | SQLite table and the four operations: insert, retrieve, update, delete |
+| `database.py` | Database tables and the four operations: insert, retrieve, update, delete (SQLite on your computer, Postgres when `DATABASE_URL` is set) |
 | `train_model.py` | Trains the model (already done) and is reused by `/retrain` |
 | `lead_model.pkl`, `Leads.csv`, `test_set.csv` | Trained model, dataset, fixed test set (from training) |
 
@@ -28,23 +28,32 @@ FastAPI + SQLite backend that scores leads with our trained ML model.
 
 `leads.db` (the SQLite database) is created automatically on first run.
 
-## Deploy: backend on Render, dashboard on Vercel
+## Deploy (free): backend on Render, database on Supabase, dashboard on Vercel
 
-### 1. Backend (Render)
+Render's free plan has no lasting disk, so the data lives in **Supabase Postgres**. `database.py` uses Postgres when `DATABASE_URL` is set and the SQLite file `leads.db` when it is not (your computer). Retrained models are stored in the database too and restored when the server starts.
+
+### 1. Database (Supabase)
+1. supabase.com → **New project**. Choose a region near you (e.g. Mumbai) and save the database password.
+2. Project page → **Connect** → **Connection string** → choose **Session pooler** (not "Direct connection": Render cannot reach that one, it is IPv6 only).
+3. Copy it and put your password in place of `[YOUR-PASSWORD]`:
+   `postgresql://postgres.<project>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres`
+   The tables are created by the backend on its first start.
+
+### 2. Backend (Render)
 The `Dockerfile` runs the FastAPI backend; `render.yaml` describes the service.
 
 1. Push this repository to GitHub.
 2. dashboard.render.com → **New → Web Service** → pick the repository.
    - Language / Runtime: **Docker** (found automatically). Root directory: leave empty.
-   - Instance type: **Free** works (see the limits below). With **Starter**, also add **Advanced → Add Disk**: mount path **`/data`**, size 1 GB.
+   - Instance type: **Free**.
    - **Health Check Path**: `/options`.
-   - **Environment Variables**: the values from `.env.example` you use (`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM`, `EMAIL_WEBHOOK_TOKEN`). `PORT` is set by Render.
+   - **Environment Variables**: `DATABASE_URL` = the Supabase string from step 1, plus the values from `.env.example` you use (`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM`, `EMAIL_WEBHOOK_TOKEN`). `PORT` is set by Render.
 
    (Or **New → Blueprint**, which reads all of this from `render.yaml`.)
 3. When it is live, open `https://<your-service>.onrender.com/docs` to check, and copy the link.
 4. Webhooks no longer need cloudflared: use `https://<your-service>.onrender.com/webhook/twilio`, `/webhook/email` and `/enquiry`.
 
-### 2. Dashboard (Vercel)
+### 3. Dashboard (Vercel)
 1. vercel.com → **Add New → Project** → import the same repository.
 2. **Root Directory: `frontend`** (Vercel then finds Vite and `vercel.json`).
 3. **Environment Variables**: `VITE_API_URL` = `https://<your-service>.onrender.com` (no slash at the end).
@@ -52,9 +61,11 @@ The `Dockerfile` runs the FastAPI backend; `render.yaml` describes the service.
 
 If you change `VITE_API_URL` later, redeploy on Vercel (it is built into the website).
 
-**Free plan limits:**
-- **No disk:** every deploy or restart (including after sleeping) wipes leads, the business profile and retrained models; the app starts again from onboarding with the original model. Fine for demos. For real use, pay for Starter + disk.
-- **Sleeps after 15 minutes idle:** the next request takes about a minute while it wakes. Twilio waits only 15 seconds, so the first WhatsApp message after a sleep can be lost. A free uptime pinger (e.g. cron-job.org or UptimeRobot) calling `https://<your-service>.onrender.com/options` every 10 minutes keeps it awake; the free plan's 750 hours a month cover one service running all month. Staying awake also avoids the wipe that comes with waking up.
+### 4. Keep it awake (free uptime pinger)
+- Render's free service **sleeps after 15 minutes idle**; waking takes about a minute, and Twilio waits only 15 seconds, so the first WhatsApp message after a sleep can be lost.
+- Supabase's free project **pauses after a week without activity**.
+
+A free pinger (cron-job.org or UptimeRobot) calling `https://<your-service>.onrender.com/connections` every 10 minutes solves both: that address also reads the database. The free plan's 750 hours a month cover one service running all month.
 
 > **No login yet.** Anyone who has the link can open the dashboard and read every lead. Use it for demos with test data, or add a login before real customers' details go in.
 

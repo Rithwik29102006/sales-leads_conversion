@@ -1,33 +1,87 @@
 """
-database.py - everything that talks to SQLite.
+database.py - everything that talks to the database.
 
 Table "leads" stores each lead, its score from the model, and its status.
 Functions here do the four database operations: insert, retrieve, update, delete.
+
+Which database:
+  DATABASE_URL not set   -> SQLite file leads.db (on your computer)
+  DATABASE_URL=postgresql://...   -> Postgres, e.g. Supabase (when deployed; Render's free
+                                     plan has no disk, so a file would be lost on every restart)
+The SQL below is written once, with "?" for values; for Postgres it is adjusted automatically.
 """
 
+import os
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime
+from pathlib import Path
 
 DB_FILE = "leads.db"
+DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
+POSTGRES = DATABASE_URL.startswith(("postgres://", "postgresql://"))
+if POSTGRES:
+    import psycopg
+    from psycopg.rows import dict_row
+
+
+def to_postgres(sql: str) -> str:
+    """SQLite words -> Postgres words. (Our SQL never contains a literal "?".)"""
+    return (sql.replace("?", "%s")
+               .replace("INTEGER PRIMARY KEY AUTOINCREMENT", "SERIAL PRIMARY KEY")
+               .replace(" REAL", " DOUBLE PRECISION")      # SQLite REAL = 8 bytes; Postgres REAL = only 4
+               .replace(" BLOB", " BYTEA"))
+
+
+class Connection:
+    """The same execute() for SQLite and Postgres. Rows can be turned into dicts with dict(row)."""
+
+    def __init__(self, raw):
+        self.raw = raw
+
+    def execute(self, sql, params=()):
+        cursor = self.raw.cursor()
+        cursor.execute(to_postgres(sql) if POSTGRES else sql, params)
+        return cursor
+
+    def executemany(self, sql, rows):
+        cursor = self.raw.cursor()
+        cursor.executemany(to_postgres(sql) if POSTGRES else sql, rows)
+        return cursor
 
 
 @contextmanager
 def get_connection():
     """Open the database, save changes when done (or undo them on error), and always close it."""
-    conn = sqlite3.connect(DB_FILE)
-    conn.row_factory = sqlite3.Row          # rows behave like dictionaries
+    if POSTGRES:
+        # prepare_threshold=None: works through Supabase's connection pooler
+        raw = psycopg.connect(DATABASE_URL, row_factory=dict_row, prepare_threshold=None, connect_timeout=15)
+    else:
+        raw = sqlite3.connect(DB_FILE)
+        raw.row_factory = sqlite3.Row       # rows behave like dictionaries
     try:
-        with conn:                          # commit on success, rollback on error
-            yield conn
+        yield Connection(raw)
+        raw.commit()
+    except Exception:
+        raw.rollback()
+        raise
     finally:
-        conn.close()
+        raw.close()
+
+
+def table_columns(conn, table: str) -> set:
+    if POSTGRES:
+        rows = conn.execute("SELECT column_name AS name FROM information_schema.columns "
+                            "WHERE table_schema = current_schema() AND table_name = ?", (table,))
+    else:
+        rows = conn.execute(f"PRAGMA table_info({table})")
+    return {r["name"] for r in rows}
 
 
 def create_tables():
     with get_connection() as conn:
         # If leads.db was made by the old version (different columns), keep it as a backup table
-        old_cols = [r["name"] for r in conn.execute("PRAGMA table_info(leads)")]
+        old_cols = table_columns(conn, "leads")
         if old_cols and "channel" not in old_cols:
             conn.execute(f"ALTER TABLE leads RENAME TO leads_old_{datetime.now():%Y%m%d%H%M%S}")
         conn.execute("""
@@ -56,11 +110,11 @@ def create_tables():
             )
         """)
         # Add columns that newer versions introduced, without losing existing leads
-        existing = {r["name"] for r in conn.execute("PRAGMA table_info(leads)")}
+        existing = table_columns(conn, "leads")
         for column in ("customer_message", "intent_tags", "chat_step", "profile_score", "priority_override"):
             if column not in existing:
-                kind = "REAL" if column == "profile_score" else "TEXT"
-                conn.execute(f"ALTER TABLE leads ADD COLUMN {column} {kind}")
+                kind = " REAL" if column == "profile_score" else " TEXT"
+                conn.execute(f"ALTER TABLE leads ADD COLUMN {column}{kind}")
 
         # The business owner's details: the WhatsApp bot answers customers from these
         conn.execute("""
@@ -86,6 +140,14 @@ def create_tables():
                 available INTEGER DEFAULT 1   -- 1 = in stock, 0 = not available now
             )
         """)
+        # Model files made by retraining (only used with Postgres: see save_files below)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS saved_files (
+                name       TEXT PRIMARY KEY,
+                data       BLOB NOT NULL,
+                saved_at   TEXT
+            )
+        """)
 
 
 # ---------- INSERT ----------
@@ -94,9 +156,9 @@ def insert_lead(lead: dict) -> int:
     columns = ", ".join(lead.keys())
     placeholders = ", ".join("?" for _ in lead)
     with get_connection() as conn:
-        cursor = conn.execute(f"INSERT INTO leads ({columns}) VALUES ({placeholders})",
-                              list(lead.values()))
-        return cursor.lastrowid or 0
+        row = conn.execute(f"INSERT INTO leads ({columns}) VALUES ({placeholders}) RETURNING id",
+                           list(lead.values())).fetchone()
+        return row["id"] if row else 0
 
 
 # ---------- RETRIEVE ----------
@@ -161,8 +223,10 @@ def get_business() -> dict:
 def save_business(details: dict) -> dict:
     values = [details.get(field) for field in BUSINESS_FIELDS]
     with get_connection() as conn:
-        conn.execute(f"INSERT OR REPLACE INTO business (id, {', '.join(BUSINESS_FIELDS)}) "
-                     f"VALUES (1, {', '.join('?' for _ in BUSINESS_FIELDS)})", values)
+        conn.execute(f"INSERT INTO business (id, {', '.join(BUSINESS_FIELDS)}) "
+                     f"VALUES (1, {', '.join('?' for _ in BUSINESS_FIELDS)}) "
+                     f"ON CONFLICT (id) DO UPDATE SET "
+                     + ", ".join(f"{f} = excluded.{f}" for f in BUSINESS_FIELDS), values)
     return get_business()
 
 
@@ -197,3 +261,29 @@ def channel_summary(channel: str) -> dict:
         row = conn.execute("SELECT COUNT(*) AS leads, MAX(created_at) AS last_lead_at FROM leads "
                            "WHERE channel = ?", (channel,)).fetchone()
         return dict(row)
+
+
+# ---------- Model files kept in the database ----------
+# With Postgres the server has no lasting disk (Render free plan), so the files that retraining
+# writes are copied into the database, and copied back when the server starts again.
+SAVED_FILES = ("lead_model.pkl", "message_model.pkl", "training_state.json")
+
+
+def save_files():
+    if not POSTGRES:
+        return                               # SQLite: the files are already on this computer's disk
+    now = datetime.now().isoformat(timespec="seconds")
+    with get_connection() as conn:
+        for name in SAVED_FILES:
+            if Path(name).exists():
+                conn.execute("INSERT INTO saved_files (name, data, saved_at) VALUES (?, ?, ?) "
+                             "ON CONFLICT (name) DO UPDATE SET data = excluded.data, saved_at = excluded.saved_at",
+                             (name, Path(name).read_bytes(), now))
+
+
+def restore_files():
+    if not POSTGRES:
+        return
+    with get_connection() as conn:
+        for row in conn.execute("SELECT name, data FROM saved_files"):
+            Path(row["name"]).write_bytes(bytes(row["data"]))
