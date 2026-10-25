@@ -342,4 +342,5 @@ def learning_status():
     last = last_training_count()
     next_at = max(10, last + AUTO_RETRAIN_EVERY)
     return {"finished_leads": closed, "used_in_last_training": last,
-            "next_training_at": next_at, "message_model": message_model.info or None}
+            "next_training_at": next_at, "message_model": message_model.info or None,
+            "message_reader": agents.INTENT_MODEL.status}

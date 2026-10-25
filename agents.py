@@ -306,13 +306,21 @@ NEGATED_BUYING = re.compile(
     r"(?:\s+\w+){0,3}?\s+(?:buy|buying|purchase|purchasing|order|ordering|book|booking|interested)\b")
 
 
+# "No I don't need", "I don't want it", "dont need anything": a refusal when nothing else follows
+# ("I don't want to wait" or "I don't need EMI" are not refusals).
+FLAT_REFUSAL = re.compile(
+    r"\b(?:do not|don'?t|dont)\s+(?:need|want)(?:\s+(?:it|this|that|anything|any|now|thanks?|sir|madam|bro))*"
+    r"\s*[.!🙏]*\s*$")
+
+
 def keyword_tags(message) -> list:
     """The keyword rules: which signal words appear in the text."""
     if not message:
         return []
     text = message.lower().replace("\u2019", "'")     # phones type a curly apostrophe: don’t
     tags = [tag for tag, _, words in SIGNALS if any(_has_keyword(text, w) for w in words)]
-    if NEGATED_BUYING.search(text) and "Not interested" not in tags:
+    if (NEGATED_BUYING.search(text) or any(FLAT_REFUSAL.search(line.strip()) for line in text.splitlines())) \
+            and "Not interested" not in tags:
         tags.append("Not interested")
     if "Not interested" in tags:                      # "not interested" overrides positive words
         tags = ["Not interested"]

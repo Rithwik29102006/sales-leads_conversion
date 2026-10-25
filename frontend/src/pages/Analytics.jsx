@@ -102,6 +102,9 @@ export default function Analytics() {
           <span className="dot-live">Learning automatically</span>
           <span>{learning.finished_leads} finished leads</span>
           <span>Next automatic training at {learning.next_training_at} finished leads</span>
+          <span>{learning.message_reader === "missing" || !learning.message_reader
+            ? "Message reading: keyword rules only (intent model not loaded)"
+            : `Message reading: intent model ${learning.message_reader} ✓`}</span>
           <span>{mm ? `Message model learned from ${mm.chats} chats (AUC ${mm.auc})` : "Message model: waiting for 15 converted and 15 not-converted chats"}</span>
         </div>
         <div className="stack" style={{ gap: 6 }}>

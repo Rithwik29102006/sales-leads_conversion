@@ -50,6 +50,7 @@ def build_pipeline():
 class IntentModel:
     def __init__(self):
         self.pipeline = None
+        self.status = "missing"                            # shown on the Analytics page
         self.load()
 
     def load(self):
@@ -58,8 +59,10 @@ class IntentModel:
                 warnings.simplefilter("error")             # a version mismatch -> retrain below
                 self.pipeline = joblib.load(MODEL_FILE)["model"]
                 self.pipeline.predict(["hi"])
+            self.status = "loaded"
         except Exception:
             self.pipeline = self.train_from_csv()
+            self.status = "retrained at start" if self.pipeline is not None else "missing"
 
     @staticmethod
     def train_from_csv():
