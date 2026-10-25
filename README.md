@@ -28,15 +28,30 @@ FastAPI + SQLite backend that scores leads with our trained ML model.
 
 `leads.db` (the SQLite database) is created automatically on first run.
 
-## Deploy on Render
+## Deploy: backend on Render, dashboard on Vercel
 
-The `Dockerfile` builds the React dashboard and runs FastAPI, which serves the API **and** the dashboard on one address (no separate frontend server, no CORS setup). `render.yaml` describes the service for Render.
+### 1. Backend (Render)
+The `Dockerfile` runs the FastAPI backend; `render.yaml` describes the service.
 
-1. Push this repository to GitHub (or GitLab).
-2. dashboard.render.com → **New → Blueprint** → connect the repository. Render reads `render.yaml`.
-3. Fill in the values it asks for (`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `EMAIL_WEBHOOK_TOKEN`; leave any blank you don't use) → **Apply**. `PORT` is set by Render.
-4. When the deploy is live, open the `https://lead-conversion-xxxx.onrender.com` link: onboarding appears.
-5. Webhooks no longer need cloudflared: use `https://<your-link>/webhook/twilio`, `/webhook/email` and `/enquiry`. The Connect page fills in the link automatically.
+1. Push this repository to GitHub.
+2. dashboard.render.com → **New → Web Service** → pick the repository.
+   - Language / Runtime: **Docker** (found automatically). Root directory: leave empty.
+   - Instance type: **Starter** (needed for the disk).
+   - **Advanced → Add Disk**: mount path **`/data`**, size 1 GB.
+   - **Health Check Path**: `/options`.
+   - **Environment Variables**: the values from `.env.example` you use (`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM`, `EMAIL_WEBHOOK_TOKEN`). `PORT` is set by Render.
+
+   (Or **New → Blueprint**, which reads all of this from `render.yaml`.)
+3. When it is live, open `https://<your-service>.onrender.com/docs` to check, and copy the link.
+4. Webhooks no longer need cloudflared: use `https://<your-service>.onrender.com/webhook/twilio`, `/webhook/email` and `/enquiry`.
+
+### 2. Dashboard (Vercel)
+1. vercel.com → **Add New → Project** → import the same repository.
+2. **Root Directory: `frontend`** (Vercel then finds Vite and `vercel.json`).
+3. **Environment Variables**: `VITE_API_URL` = `https://<your-service>.onrender.com` (no slash at the end).
+4. **Deploy**, then open the `https://...vercel.app` link: onboarding appears. The Connect page shows the Render addresses for the webhooks.
+
+If you change `VITE_API_URL` later, redeploy on Vercel (it is built into the website).
 
 **Plan and data:** the 1 GB disk at `/data` keeps `leads.db`, retrained models and `training_state.json` across deploys and restarts. Disks need a paid plan, so `render.yaml` uses **Starter**. To try it for free, change `plan: starter` to `plan: free` and delete the `disk:` block, but then **every deploy or restart wipes all leads**, and the free service sleeps after 15 minutes idle (the first request then takes ~1 minute, which can make Twilio give up on a message).
 

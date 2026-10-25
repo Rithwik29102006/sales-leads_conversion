@@ -37,7 +37,6 @@ from typing import Literal, Optional
 import pandas as pd
 from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 import database as db
@@ -342,10 +341,3 @@ def learning_status():
     next_at = max(10, last + AUTO_RETRAIN_EVERY)
     return {"finished_leads": closed, "used_in_last_training": last,
             "next_training_at": next_at, "message_model": message_model.info or None}
-
-
-# ---------- The dashboard itself (after "npm run build"), so one server runs everything ----------
-# Mounted last: every API route above is matched first.
-DASHBOARD_DIR = APP_DIR / "frontend" / "dist"
-if DASHBOARD_DIR.exists():
-    app.mount("/", StaticFiles(directory=DASHBOARD_DIR, html=True), name="dashboard")

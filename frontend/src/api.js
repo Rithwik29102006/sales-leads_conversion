@@ -1,8 +1,8 @@
 // api.js - every call from the website to the FastAPI backend goes through here.
 
-// In development the backend runs separately on port 8000. In the deployed build the backend
-// serves this website itself, so calls go to the same address ("").
-export const API_URL = import.meta.env.VITE_API_URL ?? (import.meta.env.DEV ? "http://127.0.0.1:8000" : "");
+// The backend's address. Deployed (Vercel): set VITE_API_URL to the Render link, e.g.
+// https://lead-conversion.onrender.com. In development it runs on port 8000.
+export const API_URL = (import.meta.env.VITE_API_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
 
 // Sends a request and returns the JSON reply.
 // If the backend rejects the data (422), the error carries a { field: message } map

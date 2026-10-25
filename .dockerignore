@@ -2,8 +2,7 @@
 .env
 .venv
 **/__pycache__
-**/node_modules
-frontend/dist
+frontend
 review2_build
 *.pptx
 *.pdf

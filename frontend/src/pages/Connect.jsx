@@ -10,8 +10,8 @@ function usePublicLink() {
   const [link, setLink] = useState(() => {
     let saved = "";
     try { saved = localStorage.getItem("public_link") || ""; } catch { /* private mode */ }
-    // Deployed on https (e.g. Railway): this website's own address is the public link
-    return saved || (window.location.protocol === "https:" ? window.location.origin : "");
+    // Backend deployed on https (e.g. Render): its address is the public link
+    return saved || (API_URL.startsWith("https://") ? API_URL : "");
   });
   const save = (value) => {
     setLink(value);
