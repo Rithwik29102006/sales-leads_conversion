@@ -255,7 +255,8 @@ def needs_follow_up(lead: dict, now=None) -> bool:
 SIGNALS = [
     ("Not interested", "down", ["not interested", "no thanks", "no thank you", "don't contact", "do not contact",
                                 "stop messaging", "unsubscribe", "already bought", "not needed", "not now",
-                                "don't call", "do not call", "dont call", "wrong number"]),
+                                "don't call", "do not call", "dont call", "wrong number", "no money", "no budget",
+                                "can't afford", "cannot afford", "cant afford", "not affordable"]),
     ("Just browsing", "down", ["just checking", "just asking", "only asking", "just looking", "only looking",
                                "information only", "info only", "will see later", "see later", "maybe later",
                                "let you know", "discuss with family", "will think", "think about it"]),
@@ -296,12 +297,21 @@ def only_greeting(message: str) -> bool:
     return all(w in GREETING_WORDS for w in words)
 
 
+# "do not plan to buy", "I won't purchase", "never interested": a no-word up to 3 words before
+# a buying word turns it around, so "buy" in these sentences is NOT a buying signal.
+NEGATED_BUYING = re.compile(
+    r"\b(?:don'?t|dont|do not|does not|doesn'?t|did not|didn'?t|not|never|won'?t|will not|no plans?)"
+    r"(?:\s+\w+){0,3}?\s+(?:buy|buying|purchase|purchasing|order|ordering|book|booking|interested)\b")
+
+
 def analyse_conversation(message) -> list:
     """Return the buying-signal tags found in the customer's message."""
     if not message:
         return []
-    text = message.lower()
+    text = message.lower().replace("\u2019", "'")     # phones type a curly apostrophe: don’t
     tags = [tag for tag, _, words in SIGNALS if any(_has_keyword(text, w) for w in words)]
+    if NEGATED_BUYING.search(text) and "Not interested" not in tags:
+        tags.append("Not interested")
     if "Not interested" in tags:                      # "not interested" overrides positive words
         tags = ["Not interested"]
     if not tags and only_greeting(message):
