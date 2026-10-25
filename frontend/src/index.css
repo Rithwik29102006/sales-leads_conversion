@@ -198,6 +198,7 @@ input, textarea, select { caret-color: var(--terra-600); accent-color: var(--for
 .table tbody tr { transition: background-color .15s ease-out; }
 .table tbody tr:hover { background: #FAF8F3; }
 .table tbody tr:last-child td { border-bottom: 0; }
+.table tbody tr.row-click { cursor: pointer; }
 .lead-link { font-weight: 600; color: var(--ink); text-decoration: none; }
 .lead-link:hover { color: var(--terra-700); text-decoration: underline; text-underline-offset: 3px; }
 .nowrap { white-space: nowrap; }

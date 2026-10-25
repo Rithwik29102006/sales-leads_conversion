@@ -94,9 +94,9 @@ export default function Dashboard({ onOpenLead, onAddLead, onConnect, onFollowup
                 </thead>
                 <tbody>
                   {rows.map((l) => (
-                    <tr key={l.id}>
+                    <tr key={l.id} className="row-click" onClick={() => onOpenLead(l.id)}>
                       <td className="td-name">
-                        <button type="button" className="lead-link" onClick={() => onOpenLead(l.id)}>{l.name}</button>
+                        <button type="button" className="lead-link" onClick={(e) => { e.stopPropagation(); onOpenLead(l.id); }}>{l.name}</button>
                         <div style={{ marginTop: 6 }}><Tags tags={l.intent_tags} /></div>
                       </td>
                       <td data-label="Channel"><Channel name={l.channel} /></td>
