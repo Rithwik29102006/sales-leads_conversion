@@ -1,50 +1,67 @@
-// Onboarding - shown the first time the website is opened (or after "Reset onboarding").
-// Four short steps: business profile -> products & services -> policies -> review & finish.
-// The WhatsApp bot uses everything entered here to answer customers.
+// Onboarding - shown the first time the website opens (or after "Reset onboarding").
+// Four steps: business profile -> products & services -> policies -> review & finish.
+// The WhatsApp assistant uses everything entered here to answer customers.
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
+import { Button, Icon } from "../components/ui";
 import {
-  BUSINESS_TYPES, EMPTY_PRODUCT, businessPayload, productsPayload, validateBusiness, validateProducts,
+  BUSINESS_TYPES, EMPTY_PRODUCT, businessPayload, productsPayload, rupees, toBusinessForm, toProductForm, validateBusiness,
 } from "./businessForm";
 
-const STEPS = ["Profile", "Products", "Policies", "Finish"];
-const input = "w-full rounded-lg border-0 bg-stone-100 px-4 py-3 text-[15px] outline-none ring-navy/40 focus:ring-2";
-
-function Label({ children, error }) {
+function Field({ label, required, error, hint, children }) {
   return (
-    <>
-      <span className="mb-1.5 mt-5 block text-xs font-bold uppercase tracking-wide text-slate-600">{children}</span>
-      {error && <span className="-mt-1 mb-1 block text-xs text-red-700">{error}</span>}
-    </>
+    <label className={`field${error ? " is-invalid" : ""}`}>
+      <span>{label}{required && <> <span className="req">*</span></>}</span>
+      {children}
+      {hint && !error && <span className="hint">{hint}</span>}
+      {error && <span className="error-text">{error}</span>}
+    </label>
   );
 }
 
-export default function Onboarding({ initialBusiness, initialProducts, onDone, onCancel }) {
-  const [step, setStep] = useState(0);
-  const [business, setBusiness] = useState(initialBusiness);
-  const [products, setProducts] = useState(initialProducts.length ? initialProducts : [{ ...EMPTY_PRODUCT }]);
+export default function Onboarding({ business, products, canCancel, onCancel, onDone }) {
+  const [step, setStep] = useState(1);
+  const [b, setB] = useState(toBusinessForm(business));
+  const [items, setItems] = useState(products.length ? toProductForm(products) : [{ ...EMPTY_PRODUCT }]);
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const heading = useRef(null);
 
-  const set = (key) => (e) => setBusiness({ ...business, [key]: e.target.value });
-  const setProduct = (i, key, value) => setProducts(products.map((p, j) => (j === i ? { ...p, [key]: value } : p)));
+  useEffect(() => { heading.current?.focus(); window.scrollTo(0, 0); }, [step]);
+
+  const set = (key) => (e) => { setB({ ...b, [key]: e.target.value }); setErrors({ ...errors, [key]: undefined }); };
+  const setItem = (i, key, value) => {
+    setItems(items.map((p, j) => (j === i ? { ...p, [key]: value } : p)));
+    setErrors({ ...errors, [`product-${i}`]: undefined });
+  };
 
   function next() {
-    const found = step === 0 ? validateBusiness(business, ["name", "business_type", "owner_name", "whatsapp_number"])
-      : step === 1 ? validateProducts(products, true)
-      : step === 2 ? validateBusiness(business, ["delivery_charge"]) : {};
+    let found = {};
+    if (step === 1) {
+      found = validateBusiness(b, ["name", "business_type", "owner_name", "whatsapp_number"]);
+      if (!b.whatsapp_number.trim()) found.whatsapp_number = "Enter a 10-digit mobile number.";
+    } else if (step === 2) {
+      items.forEach((p, i) => {
+        if (!p.name.trim()) found[`product-${i}`] = "Give this product a name, or remove it.";
+        else if (p.price !== "" && (Number.isNaN(Number(String(p.price).replace(/,/g, ""))) || Number(String(p.price).replace(/,/g, "")) < 0))
+          found[`product-${i}-price`] = "Price must be a number.";
+      });
+    } else if (step === 3) {
+      found = validateBusiness(b, ["delivery_charge"]);
+    }
     setErrors(found);
-    if (Object.keys(found).length === 0) setStep(step + 1);
+    if (!Object.keys(found).length) setStep(step + 1);
   }
 
   async function finish() {
     setSaving(true);
     setError("");
     try {
-      const savedBusiness = await api.saveBusiness(businessPayload(business));   // PUT /business
-      const savedProducts = await api.saveProducts(productsPayload(products));   // PUT /products
+      const clean = items.map((p) => ({ ...p, price: String(p.price).replace(/,/g, "") }));
+      const savedBusiness = await api.saveBusiness(businessPayload(b));     // PUT /business
+      const savedProducts = await api.saveProducts(productsPayload(clean));  // PUT /products
       onDone(savedBusiness, savedProducts);
     } catch (err) {
       setError(err.message);
@@ -52,126 +69,123 @@ export default function Onboarding({ initialBusiness, initialProducts, onDone, o
     }
   }
 
-  const filled = products.filter((p) => p.name.trim());
+  const dot = (n) => (n < step ? Icon.check(16) : n);
+  const kv = (rows) => <dl className="kv">{rows.map(([k, v]) => <div key={k} style={{ display: "contents" }}><dt>{k}</dt><dd>{v || "—"}</dd></div>)}</dl>;
 
   return (
-    <div className="min-h-screen bg-stone-900 px-4 py-10">
-      {onCancel && (
-        <button onClick={onCancel} className="fixed right-4 top-4 rounded-md bg-white/10 px-4 py-2 text-sm font-semibold text-white hover:bg-white/20">
-          Cancel
-        </button>
+    <main className="onb-body">
+      {canCancel && (
+        <button type="button" className="btn btn-outline btn-sm" onClick={onCancel} style={{ position: "fixed", top: 16, right: 16 }}>Cancel</button>
       )}
-      <div className="mx-auto w-full max-w-xl rounded-2xl bg-white p-6 shadow-2xl sm:p-10">
-        {/* Step circles */}
-        <ol className="mb-8 flex justify-center gap-4" aria-label="Setup steps">
-          {STEPS.map((label, i) => (
-            <li key={label} title={label}
-              className={`flex h-12 w-12 items-center justify-center rounded-full text-base font-bold ${
-                i === step ? "bg-navy text-white" : i < step ? "bg-navy-light text-navy" : "bg-stone-100 text-slate-500"}`}
-              aria-current={i === step ? "step" : undefined}>
-              {i < step ? "✓" : i + 1}
+      <div className="onb-card">
+        <ol className="onb-steps" aria-label="Setup progress">
+          {[1, 2, 3, 4].map((n) => (
+            <li key={n} className={n < step ? "done" : n === step ? "current" : ""}>
+              <span className="dot" aria-current={n === step ? "step" : undefined}>{dot(n)}</span>
+              {n < 4 && <span className="line" />}
             </li>
           ))}
         </ol>
 
-        {step === 0 && (
-          <>
-            <h2 className="text-center text-2xl font-bold text-slate-900">Welcome! 🏪</h2>
-            <p className="mb-2 text-center text-slate-500">Let's set up your business profile</p>
-            <Label error={errors.name}>Business name</Label>
-            <input className={input} value={business.name} onChange={set("name")} placeholder="e.g., Priya's Bakery" />
-            <Label error={errors.business_type}>Business type</Label>
-            <select className={input} value={business.business_type} onChange={set("business_type")}>
-              <option value="">Select type...</option>
-              {BUSINESS_TYPES.map((t) => <option key={t}>{t}</option>)}
-            </select>
-            <Label error={errors.owner_name}>Owner name</Label>
-            <input className={input} value={business.owner_name} onChange={set("owner_name")} placeholder="Your name" />
-            <Label error={errors.whatsapp_number}>WhatsApp number</Label>
-            <input className={input} value={business.whatsapp_number} onChange={set("whatsapp_number")} placeholder="+91 98765 43210" inputMode="tel" />
-            <Label>Working hours</Label>
-            <input className={input} value={business.working_hours} onChange={set("working_hours")} placeholder="e.g., 9 AM - 8 PM, Mon-Sat" />
-          </>
-        )}
-
         {step === 1 && (
-          <>
-            <h2 className="text-center text-2xl font-bold text-slate-900">Products & Services 📦</h2>
-            <p className="mb-6 text-center text-slate-500">What do you offer? Customers can ask the bot about these.</p>
-            {errors.products && <p className="mb-3 text-sm text-red-700">{errors.products}</p>}
-            <div className="space-y-4">
-              {products.map((p, i) => (
-                <div key={i} className="rounded-lg border border-stone-200 p-3">
-                  <div className="grid grid-cols-[1fr_7rem] gap-2">
-                    <input className={input} value={p.name} onChange={(e) => setProduct(i, "name", e.target.value)} placeholder="Name, e.g. Veg Thali" aria-label="Product name" />
-                    <input className={input} value={p.price} onChange={(e) => setProduct(i, "price", e.target.value)} placeholder="₹ Price" inputMode="decimal" aria-label="Price" />
-                  </div>
-                  <input className={`${input} mt-2`} value={p.details} onChange={(e) => setProduct(i, "details", e.target.value)} placeholder="Details / specifications, e.g. Rice, dal, sabzi, roti" aria-label="Details" />
-                  <div className="mt-2 flex items-center justify-between text-sm">
-                    <label className="flex items-center gap-2">
-                      <input type="checkbox" checked={p.available} onChange={(e) => setProduct(i, "available", e.target.checked)} /> Available now
-                    </label>
-                    {products.length > 1 && (
-                      <button onClick={() => setProducts(products.filter((_, j) => j !== i))} className="text-red-700 hover:underline">Remove</button>
-                    )}
-                  </div>
-                  {errors[`product-${i}`] && <p className="mt-1 text-xs text-red-700">{errors[`product-${i}`]}</p>}
-                </div>
-              ))}
+          <section className="stack" style={{ gap: 18 }}>
+            <div>
+              <h1 ref={heading} tabIndex={-1}>Welcome! 🏪 Let's set up your business profile</h1>
+              <p className="muted" style={{ marginTop: 4 }}>This takes about 3 minutes. Your WhatsApp assistant uses these details to answer customers.</p>
             </div>
-            <button onClick={() => setProducts([...products, { ...EMPTY_PRODUCT }])}
-              className="mt-4 rounded-lg bg-stone-100 px-4 py-2.5 text-sm font-semibold hover:bg-stone-200">+ Add More</button>
-          </>
+            <Field label="Business name" required error={errors.name}><input className="input" value={b.name} onChange={set("name")} placeholder="e.g. Rithwik Motors" /></Field>
+            <Field label="Business type" required error={errors.business_type}>
+              <select className="select" value={b.business_type} onChange={set("business_type")}>
+                <option value="">Choose one</option>
+                {BUSINESS_TYPES.map((t) => <option key={t}>{t}</option>)}
+              </select>
+            </Field>
+            <div className="form-grid">
+              <Field label="Owner name" required error={errors.owner_name}><input className="input" value={b.owner_name} onChange={set("owner_name")} autoComplete="name" /></Field>
+              <Field label="WhatsApp number" required error={errors.whatsapp_number}><input className="input" type="tel" value={b.whatsapp_number} onChange={set("whatsapp_number")} placeholder="+91 98765 43210" /></Field>
+            </div>
+            <Field label="Working hours"><input className="input" value={b.working_hours} onChange={set("working_hours")} placeholder="Mon–Sat, 9:30 AM – 7:30 PM" /></Field>
+            <div className="row" style={{ justifyContent: "flex-end" }}><button type="button" className="btn btn-primary" onClick={next}>Continue</button></div>
+          </section>
         )}
 
         {step === 2 && (
-          <>
-            <h2 className="text-center text-2xl font-bold text-slate-900">Business Policies 📋</h2>
-            <p className="mb-2 text-center text-slate-500">Delivery & service terms</p>
-            <Label>Delivery area</Label>
-            <input className={input} value={business.delivery_area} onChange={set("delivery_area")} placeholder="e.g., Within 10km of Jubilee Hills" />
-            <Label error={errors.delivery_charge}>Delivery charge (₹)</Label>
-            <input className={input} value={business.delivery_charge} onChange={set("delivery_charge")} placeholder="50 (0 = free delivery)" inputMode="decimal" />
-            <Label>Advance notice required</Label>
-            <input className={input} value={business.advance_notice} onChange={set("advance_notice")} placeholder="e.g., 2 days" />
-            <Label>Special instructions</Label>
-            <textarea className={input} rows={3} value={business.special_instructions} onChange={set("special_instructions")}
-              placeholder="Any special policies or instructions..." />
-          </>
+          <section className="stack" style={{ gap: 18 }}>
+            <div>
+              <h1 ref={heading} tabIndex={-1}>Products &amp; Services 📦</h1>
+              <p className="muted" style={{ marginTop: 4 }}>Add what you sell. Customers see names first; prices only when they ask.</p>
+            </div>
+            <div className="stack" style={{ gap: 18 }}>
+              {items.map((p, i) => (
+                <fieldset key={i} className="product-block">
+                  <legend>Product {i + 1}</legend>
+                  <div className="form-grid" style={{ gridTemplateColumns: "2fr 1fr" }}>
+                    <Field label="Name" required error={errors[`product-${i}`]}><input className="input" value={p.name} onChange={(e) => setItem(i, "name", e.target.value)} placeholder="e.g. Hyundai Creta SX" /></Field>
+                    <Field label="Price ₹" error={errors[`product-${i}-price`]}><input className="input" inputMode="numeric" value={p.price} onChange={(e) => setItem(i, "price", e.target.value)} placeholder="1450000" /></Field>
+                  </div>
+                  <Field label="Details / specifications"><input className="input" value={p.details} onChange={(e) => setItem(i, "details", e.target.value)} placeholder="Size, flavour, features…" /></Field>
+                  <div className="row-between">
+                    <label className="check"><input type="checkbox" checked={p.available} onChange={(e) => setItem(i, "available", e.target.checked)} />Available now</label>
+                    {items.length > 1 && <button type="button" className="btn btn-ghost-danger btn-sm" onClick={() => setItems(items.filter((_, j) => j !== i))}>Remove</button>}
+                  </div>
+                </fieldset>
+              ))}
+            </div>
+            <button type="button" className="btn btn-dashed" onClick={() => setItems([...items, { ...EMPTY_PRODUCT }])}>{Icon.plus()}Add more</button>
+            <div className="row-between">
+              <button type="button" className="btn btn-outline" onClick={() => setStep(1)}>Back</button>
+              <button type="button" className="btn btn-primary" onClick={next}>Continue</button>
+            </div>
+          </section>
         )}
 
         {step === 3 && (
-          <>
-            <h2 className="text-center text-2xl font-bold text-slate-900">All set! ✅</h2>
-            <p className="mb-6 text-center text-slate-500">Check your details, then finish</p>
-            <dl className="space-y-3 rounded-lg bg-stone-50 p-4 text-sm">
-              <div><dt className="text-xs font-bold uppercase text-slate-500">Business</dt>
-                <dd>{business.name} · {business.business_type} · {business.owner_name}</dd></div>
-              <div><dt className="text-xs font-bold uppercase text-slate-500">WhatsApp · Hours</dt>
-                <dd>{business.whatsapp_number || "-"} · {business.working_hours || "-"}</dd></div>
-              <div><dt className="text-xs font-bold uppercase text-slate-500">{filled.length} product{filled.length === 1 ? "" : "s"}</dt>
-                <dd>{filled.map((p) => p.name).join(", ")}</dd></div>
-              <div><dt className="text-xs font-bold uppercase text-slate-500">Delivery</dt>
-                <dd>{business.delivery_area || "-"}{business.delivery_charge !== "" ? ` · ₹${business.delivery_charge}` : ""}
-                  {business.advance_notice ? ` · ${business.advance_notice} notice` : ""}</dd></div>
-            </dl>
-            <p className="mt-4 text-sm text-slate-600">Next, open <b>Connect</b> in the menu to link your WhatsApp, website and email,
-              so customer enquiries arrive as leads automatically.</p>
-            {error && <p className="mt-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
-          </>
+          <section className="stack" style={{ gap: 18 }}>
+            <div>
+              <h1 ref={heading} tabIndex={-1}>Business Policies 📋</h1>
+              <p className="muted" style={{ marginTop: 4 }}>Your assistant uses these to answer delivery and timing questions.</p>
+            </div>
+            <Field label="Delivery area"><input className="input" value={b.delivery_area} onChange={set("delivery_area")} placeholder="e.g. Within 10 km of the shop" /></Field>
+            <div className="form-grid">
+              <Field label="Delivery charge (₹)" error={errors.delivery_charge} hint="0 = free delivery"><input className="input" inputMode="numeric" value={b.delivery_charge} onChange={set("delivery_charge")} placeholder="0" /></Field>
+              <Field label="Advance notice"><input className="input" value={b.advance_notice} onChange={set("advance_notice")} placeholder="e.g. 1 day for custom orders" /></Field>
+            </div>
+            <Field label="Special instructions"><textarea className="textarea" rows={4} value={b.special_instructions} onChange={set("special_instructions")} placeholder="Anything customers should know" /></Field>
+            <div className="row-between">
+              <button type="button" className="btn btn-outline" onClick={() => setStep(2)}>Back</button>
+              <button type="button" className="btn btn-primary" onClick={next}>Continue</button>
+            </div>
+          </section>
         )}
 
-        <div className={`mt-8 grid gap-3 ${step > 0 ? "grid-cols-[1fr_1.5fr]" : ""}`}>
-          {step > 0 && (
-            <button onClick={() => setStep(step - 1)} className="rounded-lg border border-stone-300 py-3 font-semibold text-slate-600 hover:bg-stone-50">Back</button>
-          )}
-          {step < 3
-            ? <button onClick={next} className="rounded-lg bg-navy py-3 font-semibold text-white hover:opacity-90">Continue</button>
-            : <button onClick={finish} disabled={saving} className="rounded-lg bg-navy py-3 font-semibold text-white hover:opacity-90 disabled:opacity-60">
-                {saving ? "Saving..." : "Finish setup"}
-              </button>}
-        </div>
+        {step === 4 && (
+          <section className="stack" style={{ gap: 18 }}>
+            <div>
+              <h1 ref={heading} tabIndex={-1}>All set! ✅</h1>
+              <p className="muted" style={{ marginTop: 4 }}>Check everything below. You can change most of it later in My Business.</p>
+            </div>
+            <div>
+              <section className="summary-sec"><h3>Business</h3>
+                {kv([["Name", b.name], ["Type", b.business_type], ["Owner", b.owner_name], ["WhatsApp", b.whatsapp_number], ["Hours", b.working_hours]])}</section>
+              <section className="summary-sec"><h3>Products ({items.length})</h3>
+                {items.map((p, i) => (
+                  <div key={i} className="row-between">
+                    <span><strong>{p.name}</strong>{!p.available && <span className="muted"> (not available)</span>}</span>
+                    <span className="num">{p.price !== "" ? rupees(String(p.price).replace(/,/g, "")) : ""}</span>
+                  </div>
+                ))}</section>
+              <section className="summary-sec"><h3>Policies</h3>
+                {kv([["Delivery area", b.delivery_area], ["Delivery charge", Number(b.delivery_charge) ? rupees(b.delivery_charge) : "Free"], ["Advance notice", b.advance_notice]])}</section>
+            </div>
+            <div className="alert alert-info">{Icon.link()}<span><strong>Next:</strong> open <strong>Connect</strong> (top right) to link WhatsApp, your website and email so enquiries come in by themselves.</span></div>
+            {error && <div className="alert alert-error">{Icon.alert()}<span>{error}</span></div>}
+            <div className="row-between">
+              <button type="button" className="btn btn-outline" onClick={() => setStep(3)}>Back</button>
+              <Button className="btn btn-success" loading={saving} loadingText="Saving…" onClick={finish}>Finish setup</Button>
+            </div>
+          </section>
+        )}
       </div>
-    </div>
+    </main>
   );
 }

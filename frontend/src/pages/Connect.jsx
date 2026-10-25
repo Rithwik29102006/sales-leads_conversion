@@ -1,179 +1,163 @@
-// Connect - link the business's WhatsApp, website and email so leads arrive by themselves.
-// Shows whether each channel is working, how many leads it brought, and how to set it up.
+// Connect - link WhatsApp, the website form and email so enquiries become leads by themselves.
+// Shows each channel's status and lead count, and the addresses to paste into each service.
 
 import { useEffect, useState } from "react";
 import { api, API_URL } from "../api";
+import { Button, Icon, Spinner, copyText, niceDate, toast } from "../components/ui";
 
-// The public link from cloudflared / ngrok. Saved in this browser only, so it is
-// remembered next time (the backend itself cannot know it).
-function usePublicLink() {
-  const [link, setLink] = useState(() => {
-    let saved = "";
-    try { saved = localStorage.getItem("public_link") || ""; } catch { /* private mode */ }
-    // Backend deployed on https (e.g. Render): its address is the public link
-    return saved || (API_URL.startsWith("https://") ? API_URL : "");
-  });
-  const save = (value) => {
-    setLink(value);
-    try { localStorage.setItem("public_link", value); } catch { /* private mode */ }
-  };
-  return [link.trim().replace(/\/+$/, ""), link, save];
+const LINK_KEY = "public_link";
+const readLink = () => {
+  let saved = "";
+  try { saved = localStorage.getItem(LINK_KEY) || ""; } catch { /* private mode */ }
+  // Backend deployed on https (e.g. Render): its address is the public link
+  return saved || (API_URL.startsWith("https://") ? API_URL : "");
+};
+
+function Pill({ state }) {
+  const label = { on: "Connected", idle: "Not used yet", off: "Not set up" }[state];
+  return <span className={`pill pill-${state}`}>{label}</span>;
 }
 
-function Status({ state }) {
-  const styles = {
-    connected: ["bg-green-100 text-green-800", "Connected"],
-    ready: ["bg-amber-100 text-amber-800", "Not used yet"],
-    off: ["bg-slate-100 text-slate-600", "Not set up"],
-  };
-  const [cls, text] = styles[state];
-  return <span className={`whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-bold ${cls}`}>{text}</span>;
-}
-
-function CopyBox({ value, multiline = false }) {
+function CopyBox({ value, wrap = false }) {
   const [copied, setCopied] = useState(false);
-  const copy = () => {
-    navigator.clipboard.writeText(value).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); });
-  };
   return (
-    <div className="flex items-start gap-2">
-      {multiline
-        ? <textarea readOnly value={value} rows={3} className="w-full rounded-md border border-slate-300 bg-slate-50 p-2 font-mono text-xs" />
-        : <input readOnly value={value} className="w-full rounded-md border border-slate-300 bg-slate-50 px-2 py-1.5 font-mono text-xs" />}
-      <button onClick={copy} className="shrink-0 rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold hover:bg-slate-100">
+    <div className={`copybox${wrap ? " wrap" : ""}`}>
+      <code>{value}</code>
+      <button type="button" className="btn btn-outline btn-sm"
+        onClick={() => copyText(value).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1600); })}>
         {copied ? "Copied" : "Copy"}
       </button>
     </div>
   );
 }
 
-function Card({ icon, title, state, children, stats }) {
+function Head({ icon, bg, title, state, info }) {
   return (
-    <section className="block rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-      <div className="mb-3 flex items-center gap-3">
-        <span className="text-2xl" aria-hidden="true">{icon}</span>
-        <h3 className="mr-auto text-lg font-bold text-navy">{title}</h3>
-        <Status state={state} />
+    <div className="row" style={{ gap: 12, alignItems: "flex-start", flexWrap: "nowrap" }}>
+      <span className="ch-icon" style={{ background: bg }}>{icon}</span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div className="row-between" style={{ gap: 8 }}><h2>{title}</h2><Pill state={state} /></div>
+        <p className="small muted">{info.leads} lead{info.leads === 1 ? "" : "s"} so far{info.last_lead_at ? ` · latest ${niceDate(info.last_lead_at)}` : ""}</p>
       </div>
-      {stats && (
-        <p className="mb-4 text-sm text-slate-600">
-          <b>{stats.leads}</b> lead{stats.leads === 1 ? "" : "s"} so far
-          {stats.last_lead_at && <> · latest {stats.last_lead_at.replace("T", " ").slice(0, 16)}</>}
-        </p>
-      )}
-      <div className="space-y-3 text-sm">{children}</div>
-    </section>
+    </div>
   );
 }
 
-const Step = ({ n, children }) => (
-  <li className="flex gap-2"><span className="font-bold text-navy">{n}.</span><span>{children}</span></li>
-);
-
-export default function Connect() {
+export default function Connect({ business }) {
   const [status, setStatus] = useState(null);
   const [error, setError] = useState("");
-  const [base, rawLink, setLink] = usePublicLink();
-  const [testEmail, setTestEmail] = useState({ from: "", subject: "", text: "" });
-  const [emailResult, setEmailResult] = useState(null);
+  const [link, setLink] = useState(readLink());
+  const [linkError, setLinkError] = useState(false);
+  const [mail, setMail] = useState({ from: "", subject: "", text: "" });
+  const [sendingMail, setSendingMail] = useState(false);
+  const [mailResult, setMailResult] = useState(null);
 
   const load = () => api.getConnections().then(setStatus).catch((err) => setError(err.message));
   useEffect(() => { load(); }, []);
 
-  const publicBase = base || "https://YOUR-LINK.trycloudflare.com";
-  const validLink = /^https:\/\/[^\s/]+\.[^\s/]+$/.test(base);
+  const base = link.trim().replace(/\/+$/, "") || "https://YOUR-LINK.trycloudflare.com";
+
+  function saveLink(e) {
+    e.preventDefault();
+    const ok = /^https:\/\/[^\s/]+\.[^\s/]+$/.test(link.trim().replace(/\/+$/, ""));
+    setLinkError(!ok);
+    if (!ok) return;
+    try { localStorage.setItem(LINK_KEY, link.trim()); } catch { /* private mode */ }
+    toast("success", "Link saved", "All the addresses below now use it.");
+  }
 
   async function sendTestEmail(e) {
     e.preventDefault();
-    setEmailResult(null);
+    setMailResult(null);
+    setSendingMail(true);
     try {
-      const result = await api.testEmail(testEmail);           // POST /webhook/email
-      setEmailResult({ ok: true, text: `Lead ${result.lead_id} ${result.action}. Open the Dashboard to see it.` });
-      setTestEmail({ from: "", subject: "", text: "" });
+      const r = await api.testEmail(mail);                      // POST /webhook/email
+      setMailResult({ ok: true, text: `Test received. Lead ${r.action === "created" ? "added" : "updated"} from ${mail.from} — see the Dashboard.` });
+      setMail({ from: "", subject: "", text: "" });
       load();
     } catch (err) {
-      setEmailResult({ ok: false, text: err.message });
+      setMailResult({ ok: false, text: err.message });
+    } finally {
+      setSendingMail(false);
     }
   }
 
-  if (error) return <p className="rounded-md bg-red-50 px-4 py-3 text-red-700">{error}</p>;
-  if (!status) return <p>Loading...</p>;
+  if (error) return <main className="page"><div className="alert alert-error">{Icon.alert()}<span>{error}</span></div></main>;
+  if (!status) return <div className="page-loading"><Spinner />Loading channels…</div>;
+
   const { whatsapp, website, email } = status;
+  const waState = !whatsapp.configured ? "off" : whatsapp.leads > 0 ? "on" : "idle";
+  const number = whatsapp.number.replace(/^\+1(\d{3})(\d{3})(\d{4})$/, "+1 $1 $2 $3");
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-xl font-bold text-navy">Connect your channels</h2>
-        <p className="text-sm text-slate-500">Customers who write on WhatsApp, fill your website form or send an email become leads automatically,
-          and are scored at once.</p>
+    <main className="page">
+      <div className="page-head">
+        <div>
+          <h1>Connect your channels</h1>
+          <p>Every enquiry from these channels becomes a lead on your Dashboard automatically{business?.name ? ` for ${business.name}` : ""}.</p>
+        </div>
       </div>
 
-      <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-        <label className="block text-xs font-semibold uppercase text-slate-500" htmlFor="public-link">Your public link</label>
-        <p className="mb-2 text-xs text-slate-500">
-          Run <code className="rounded bg-slate-100 px-1">cloudflared tunnel --url http://localhost:8000</code> and paste the
-          https link it prints. The addresses below are built from it.
-        </p>
-        <input id="public-link" value={rawLink} onChange={(e) => setLink(e.target.value)}
-          placeholder="https://something-random.trycloudflare.com"
-          className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
-        {rawLink && !validLink && <p className="mt-1 text-xs text-red-700">Paste only the link, like https://abc-def.trycloudflare.com</p>}
-      </section>
+      <form className="card card-pad stack" style={{ gap: 10 }} onSubmit={saveLink} noValidate>
+        <div className={`field${linkError ? " is-invalid" : ""}`}>
+          <h2 style={{ marginBottom: 4 }}><label htmlFor="public-link">Your public link</label></h2>
+          <div className="row" style={{ gap: 10 }}>
+            <input className="input" id="public-link" type="url" value={link} placeholder="https://your-name.trycloudflare.com"
+              onChange={(e) => { setLink(e.target.value); setLinkError(false); }}
+              style={{ flex: "1 1 420px", minWidth: 0, fontFamily: "var(--mono)", fontSize: 14 }} aria-invalid={linkError} />
+            <button type="submit" className="btn btn-brand">Save link</button>
+          </div>
+          {linkError && <span className="error-text">Paste the full https link, for example https://your-name.trycloudflare.com</span>}
+          <span className="hint">Run <code>cloudflared tunnel --url http://localhost:8000</code> and paste the <strong>https</strong> link it shows. All the addresses below update from it.</span>
+        </div>
+      </form>
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        {/* ---------------- WhatsApp ---------------- */}
-        <Card icon="💬" title="WhatsApp" stats={whatsapp}
-          state={whatsapp.configured ? (whatsapp.leads > 0 ? "connected" : "ready") : "off"}>
-          <p>Through <b>Twilio</b>. Number: <b>{whatsapp.number}</b>{" "}
-            {whatsapp.signature_check ? "· messages are checked to come from Twilio" : ""}</p>
+      <div className="grid-3">
+        <section className="card card-pad stack" aria-label="WhatsApp">
+          <Head icon={Icon.whatsapp("#33733D", 22)} bg="var(--high-50)" title="WhatsApp" state={waState} info={whatsapp} />
+          <p>Through Twilio, number <strong>{number}</strong>{whatsapp.signature_check ? " · messages checked to come from Twilio" : ""}</p>
           {!whatsapp.configured && (
-            <p className="rounded-md bg-amber-50 px-3 py-2 text-amber-800">Add TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN to the
-              <code> .env</code> file and restart the backend.</p>
+            <div className="alert alert-error">{Icon.alert()}<span>Add <code>TWILIO_ACCOUNT_SID</code> and <code>TWILIO_AUTH_TOKEN</code> to the <code>.env</code> file and restart the backend.</span></div>
           )}
-          <ol className="space-y-1.5">
-            <Step n={1}>Twilio Console → Messaging → Try it out → Send a WhatsApp message.</Step>
-            <Step n={2}>Sandbox settings → "When a message comes in" → paste this, method POST, Save:</Step>
+          <ol className="steps">
+            <li><span>In the Twilio Console open <strong>Messaging → Try it out → Send a WhatsApp message</strong>.</span></li>
+            <li><span>From each phone, send the <strong>join</strong> code to {number} (lasts 72 hours).</span></li>
+            <li><span>Paste the address below into “When a message comes in”, method POST, and save.</span></li>
+            <li><span>Send “Hi” to test. The bot replies and a lead appears on the Dashboard.</span></li>
           </ol>
-          <CopyBox value={publicBase + whatsapp.webhook_path} />
-          <ol start={3} className="space-y-1.5">
-            <Step n={3}>From each phone, send the <b>join</b> code to {whatsapp.number} once (lasts 72 hours).</Step>
-            <Step n={4}>Send "Hi". The bot replies and a lead appears on the Dashboard.</Step>
-          </ol>
-        </Card>
+          <div className="field"><span className="small" style={{ fontWeight: 500 }}>Webhook URL</span><CopyBox value={base + whatsapp.webhook_path} /></div>
+        </section>
 
-        {/* ---------------- Website ---------------- */}
-        <Card icon="🌐" title="Website" stats={website} state={website.leads > 0 ? "connected" : "ready"}>
-          <p>An enquiry form for your website. It also measures time on the page and visits, which the model uses.</p>
-          <p className="font-semibold">Share this link (or put it on a "Contact us" button):</p>
-          <CopyBox value={publicBase + website.form_path} />
-          <p className="font-semibold">Or put the form inside your own website:</p>
-          <CopyBox multiline value={`<iframe src="${publicBase}${website.form_path}" width="100%" height="760" style="border:0" title="Enquiry form"></iframe>`} />
-          <a href={API_URL + website.form_path} target="_blank" rel="noreferrer"
-            className="inline-block rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold hover:bg-slate-100">
-            Open the form ↗
-          </a>
-        </Card>
+        <section className="card card-pad stack" aria-label="Website">
+          <Head icon={Icon.website("#1F3D2B", 22)} bg="var(--forest-50)" title="Website" state={website.leads > 0 ? "on" : "idle"} info={website} />
+          <p>Share the form link anywhere, or paste the embed code into your website. It also measures time on the page and visits for the model.</p>
+          <div className="field"><span className="small" style={{ fontWeight: 500 }}>Enquiry form link</span><CopyBox value={base + website.form_path} /></div>
+          <div className="field"><span className="small" style={{ fontWeight: 500 }}>Embed code (iframe)</span>
+            <CopyBox wrap value={`<iframe src="${base}${website.form_path}" width="100%" height="760" style="border:0" title="Enquiry form"></iframe>`} /></div>
+          <a className="btn btn-outline" href={API_URL + website.form_path} target="_blank" rel="noopener noreferrer" style={{ alignSelf: "flex-start" }}>Open the form {Icon.ext()}</a>
+        </section>
 
-        {/* ---------------- Email ---------------- */}
-        <Card icon="✉️" title="Email" stats={email} state={email.leads > 0 ? "connected" : "ready"}>
-          <p>An email forwarding service (for example CloudMailin, or Zapier / Make "email to webhook")
-            sends each customer email to this address:</p>
-          <CopyBox value={publicBase + email.webhook_path} />
-          <p className="text-xs text-slate-500">Accepted fields: from, subject, text (JSON or form).
-            {email.token_required ? " Add ?token=YOUR_TOKEN to the address." : ""}</p>
-          <form onSubmit={sendTestEmail} className="space-y-2 border-t border-slate-100 pt-3">
-            <p className="font-semibold">Try it: send a test email</p>
-            <input required type="email" value={testEmail.from} onChange={(e) => setTestEmail({ ...testEmail, from: e.target.value })}
-              placeholder="customer@gmail.com" className="w-full rounded-md border border-slate-300 px-3 py-1.5" />
-            <input value={testEmail.subject} onChange={(e) => setTestEmail({ ...testEmail, subject: e.target.value })}
-              placeholder="Subject" className="w-full rounded-md border border-slate-300 px-3 py-1.5" />
-            <textarea required rows={2} value={testEmail.text} onChange={(e) => setTestEmail({ ...testEmail, text: e.target.value })}
-              placeholder="Hi, what is the price? I want to buy this week." className="w-full rounded-md border border-slate-300 px-3 py-1.5" />
-            <button className="rounded-md bg-navy px-4 py-1.5 font-semibold text-white">Send test email</button>
-            {emailResult && <p className={`rounded-md px-3 py-2 ${emailResult.ok ? "bg-green-50 text-green-800" : "bg-red-50 text-red-700"}`}>{emailResult.text}</p>}
+        <section className="card card-pad stack" aria-label="Email">
+          <Head icon={Icon.email("#855712", 22)} bg="var(--med-50)" title="Email" state={email.leads > 0 ? "on" : "idle"} info={email} />
+          <div className="field"><span className="small" style={{ fontWeight: 500 }}>Email webhook URL</span>
+            <CopyBox value={base + email.webhook_path + (email.token_required ? "?token=YOUR_TOKEN" : "")} />
+            <p className="hint">Accepted fields: <code>from</code>, <code>subject</code>, <code>text</code> (or <code>body</code>). Works with forwarding services like CloudMailin, Zapier or Make.</p>
+          </div>
+          <form className="stack" style={{ gap: 10, borderTop: "1px solid var(--line)", paddingTop: 16 }} onSubmit={sendTestEmail}>
+            <h3>Send a test email</h3>
+            <label className="field"><span className="small">From</span>
+              <input className="input" type="email" required value={mail.from} placeholder="customer@gmail.com" onChange={(e) => setMail({ ...mail, from: e.target.value })} /></label>
+            <label className="field"><span className="small">Subject</span>
+              <input className="input" value={mail.subject} placeholder="Swift VXI on EMI?" onChange={(e) => setMail({ ...mail, subject: e.target.value })} /></label>
+            <label className="field"><span className="small">Message</span>
+              <textarea className="textarea" rows={3} required value={mail.text} placeholder="Hi, do you offer EMI on the Swift VXI?" onChange={(e) => setMail({ ...mail, text: e.target.value })} /></label>
+            <Button className="btn btn-brand" type="submit" loading={sendingMail} loadingText="Sending…" style={{ alignSelf: "flex-start" }}>Send test email</Button>
+            {mailResult && (
+              <div className={`alert ${mailResult.ok ? "alert-success" : "alert-error"}`} role="status">{mailResult.ok ? Icon.check() : Icon.alert()}<span>{mailResult.text}</span></div>
+            )}
           </form>
-        </Card>
+        </section>
       </div>
-    </div>
+    </main>
   );
 }

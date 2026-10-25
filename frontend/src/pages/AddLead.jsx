@@ -1,54 +1,75 @@
-// Add Lead page - the form, then the model's result for the new lead.
+// Add Lead - for walk-ins and phone calls. The form on the left, the model's result on the right.
 
 import { useState } from "react";
 import { api } from "../api";
 import LeadForm from "../components/LeadForm";
-import { PriorityBadge, ScoreBar, ScoreBreakdown, IntentTags } from "../components/Badges";
+import { BigBar, Breakdown, Icon, PriorityBadge, Spinner, Tags, pct } from "../components/ui";
 
-export default function AddLead({ options, onOpenLead }) {
+export default function AddLead({ options, products, onOpenLead, onCancel }) {
   const [result, setResult] = useState(null);
+  const [scoring, setScoring] = useState("");
   const [formKey, setFormKey] = useState(0);   // changing the key clears the form
 
   async function save(payload) {
-    const lead = await api.addLead(payload);   // POST /leads -> analysed, scored, saved
-    setResult(lead);
-    setFormKey(formKey + 1);
+    setResult(null);
+    setScoring(payload.name);
+    try {
+      const lead = await api.addLead(payload);   // POST /leads -> analysed, scored, saved
+      setResult(lead);
+      setFormKey(formKey + 1);
+    } finally {
+      setScoring("");
+    }
   }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-3">
-      <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm lg:col-span-2">
-        <h2 className="mb-4 text-xl font-bold text-navy">Add a new lead</h2>
-        <LeadForm key={formKey} options={options} submitLabel="Save and score lead" onSubmit={save} />
+    <main className="page">
+      <div className="page-head">
+        <div>
+          <h1>Add a lead</h1>
+          <p>For walk-ins and phone calls. The model scores the lead as soon as you save it.</p>
+        </div>
       </div>
 
-      <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-        <h2 className="mb-4 text-xl font-bold text-navy">Model result</h2>
-        {!result ? (
-          <p className="text-sm text-slate-500">Fill in the form and save. The model will score the lead here.</p>
-        ) : (
-          <div className="space-y-4">
-            <p className="text-lg font-semibold">{result.name}</p>
-            <div className="flex items-center gap-3"><ScoreBar score={result.score} priority={result.priority} /><PriorityBadge priority={result.priority} /></div>
-            <ScoreBreakdown lead={result} />
-            <IntentTags tags={result.intent_tags} />
-            <div>
-              <p className="text-sm font-semibold text-slate-600">Why</p>
-              <p className="text-sm">{result.reasons}</p>
+      <div className="split">
+        <LeadForm key={formKey} options={options} products={products} title="Lead details" submitLabel="Save & score lead"
+          onSubmit={save} onCancel={onCancel} />
+
+        <aside className="side" aria-label="Result" aria-live="polite">
+          {!result && !scoring && (
+            <div className="card empty" style={{ borderStyle: "dashed", padding: "40px 24px" }}>
+              <p className="empty-title" style={{ fontSize: 15 }}>The score will appear here</p>
+              <p className="small">Fill in the details and press “Save &amp; score lead”.</p>
             </div>
-            <div>
-              <p className="text-sm font-semibold text-slate-600">Suggested message</p>
-              <p className="rounded-md bg-navy-light p-3 text-sm">{result.draft_message}</p>
+          )}
+          {scoring && (
+            <div className="card empty" style={{ padding: "40px 24px" }}>
+              <Spinner size={28} />
+              <p>Scoring {scoring}…</p>
             </div>
-            {result.needs_follow_up && (
-              <p className="rounded-md bg-amber-50 p-2 text-sm text-amber-800">High priority: contact this lead today.</p>
-            )}
-            <button onClick={() => onOpenLead(result.id)} className="text-sm font-semibold text-navy underline">
-              Open lead details
-            </button>
-          </div>
-        )}
+          )}
+          {result && (
+            <section className="card card-pad stack">
+              <div className="alert alert-success" style={{ border: 0 }}>{Icon.check(16)}Lead saved and scored</div>
+              <div className="row-between"><h2 style={{ fontSize: 19 }}>{result.name}</h2><PriorityBadge priority={result.priority} manual={Boolean(result.priority_override)} /></div>
+              <div className="stack" style={{ gap: 6 }}>
+                <div className="big-chance"><span className="muted">Chance of buying</span><strong style={{ fontSize: 26 }}>{pct(result.score)}%</strong></div>
+                <BigBar score={result.score} priority={result.priority} large={false} />
+                <Breakdown lead={result} />
+              </div>
+              <Tags tags={result.intent_tags} large />
+              <p><strong>Why:</strong> <span style={{ color: "var(--ink-2)" }}>{result.reasons}</span></p>
+              {result.draft_message && (
+                <div className="stack" style={{ gap: 6 }}>
+                  <span className="small muted" style={{ fontWeight: 500 }}>Suggested follow-up</span>
+                  <p className="fu-preview fu-preview-full">{result.draft_message}</p>
+                </div>
+              )}
+              <button type="button" className="btn btn-brand" style={{ alignSelf: "flex-start" }} onClick={() => onOpenLead(result.id)}>Open lead</button>
+            </section>
+          )}
+        </aside>
       </div>
-    </div>
+    </main>
   );
 }

@@ -1,42 +1,82 @@
-// Follow-ups - leads the Follow-up Agent says need attention now.
+// Follow-ups - leads waiting for a reply today, most important first, with the drafted message.
 
 import { useEffect, useState } from "react";
 import { api } from "../api";
-import { PriorityBadge, StatusBadge } from "../components/Badges";
+import { Button, Icon, PriorityBadge, Spinner, daysAgo, toast } from "../components/ui";
 
-export default function FollowUps({ onOpenLead }) {
-  const [items, setItems] = useState(null);
+const RANK = { HIGH: 0, MEDIUM: 1, LOW: 2 };
+
+export default function FollowUps({ onOpenLead, onBack }) {
+  const [list, setList] = useState(null);
+  const [sendingId, setSendingId] = useState(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    api.getFollowups().then(setItems).catch((err) => setError(err.message));
+    api.getFollowups()
+      .then((due) => setList(due.sort((a, b) => RANK[a.priority] - RANK[b.priority])))
+      .catch((err) => setError(err.message));
   }, []);
 
-  if (error) return <p className="rounded-md bg-red-50 px-4 py-3 text-red-700">{error}</p>;
-  if (!items) return <p>Loading...</p>;
+  async function send(item) {
+    setSendingId(item.id);
+    try {
+      await api.sendWhatsapp(item.id, item.message);      // POST /leads/{id}/whatsapp
+      setList((l) => l.filter((x) => x.id !== item.id));
+      toast("success", `Message sent to ${item.name}`, "Status changed to Contacted.");
+    } catch (err) {
+      toast("error", `Couldn't send to ${item.name}`, err.message);
+    } finally {
+      setSendingId(null);
+    }
+  }
+
+  if (error) return <main className="page"><div className="alert alert-error">{Icon.alert()}<span>{error}</span></div></main>;
+  if (!list) return <div className="page-loading"><Spinner />Loading follow-ups…</div>;
+
+  const since = (item) => item.last_contacted_at ? `Last contact ${daysAgo(item.last_contacted_at)}` : `New · came in ${daysAgo(item.created_at)}`;
+  const canWhatsApp = (phone) => /\d{10}/.test((phone || "").replace(/\D/g, ""));
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h2 className="text-xl font-bold text-navy">Follow-ups due ({items.length})</h2>
-        <p className="text-sm text-slate-500">
-          Rules: new HIGH leads at once · HIGH after 1 day · MEDIUM after 3 days · LOW after 7 days without contact.
-        </p>
-      </div>
-      {items.length === 0 && <p className="rounded-lg bg-white p-8 text-center text-slate-500 shadow-sm">Nothing due. All leads are up to date.</p>}
-      {items.map((item) => (
-        <div key={item.id} className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="mb-2 flex flex-wrap items-center gap-3">
-            <p className="mr-auto text-lg font-semibold">{item.name}</p>
-            <PriorityBadge priority={item.priority} />
-            <StatusBadge status={item.status} />
-          </div>
-          <p className="rounded-md bg-navy-light p-3 text-sm">{item.message}</p>
-          <button onClick={() => onOpenLead(item.id)} className="mt-3 text-sm font-semibold text-navy underline">
-            Open lead to send
-          </button>
+    <main className="page page-narrow">
+      <div className="page-head">
+        <div>
+          <h1>Follow-ups due today</h1>
+          <p>{list.length ? `${list.length} lead${list.length === 1 ? "" : "s"} waiting for a reply · most important first` : "Nothing waiting"}</p>
         </div>
-      ))}
-    </div>
+        <p className="small muted">HIGH after 1 day · MEDIUM after 3 · LOW after 7. Open a lead to edit the message.</p>
+      </div>
+
+      {list.length ? (
+        <ul className="stack" style={{ listStyle: "none", margin: 0, padding: 0, gap: 12 }}>
+          {list.map((item) => (
+            <li key={item.id} className="card fu-item">
+              <div className="fu-body">
+                <div className="row" style={{ gap: 10 }}>
+                  <h2>{item.name}</h2>
+                  <PriorityBadge priority={item.priority} manual={Boolean(item.priority_override)} />
+                  <span className="since">{Icon.clock()}{since(item)}</span>
+                </div>
+                <p className="fu-preview">{item.message}</p>
+              </div>
+              <div className="fu-actions">
+                <button type="button" className="btn btn-outline" onClick={() => onOpenLead(item.id)}>Open</button>
+                {canWhatsApp(item.phone) && (
+                  <Button className="btn btn-success" loading={sendingId === item.id} loadingText="Sending…" onClick={() => send(item)}>
+                    {Icon.send()}Send on WhatsApp
+                  </Button>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <div className="card empty">
+          <span className="empty-check">{Icon.check(28)}</span>
+          <p className="empty-title">All caught up 🎉</p>
+          <p>No follow-ups due today. New ones will show up here.</p>
+          <button type="button" className="btn btn-outline" style={{ marginTop: 6 }} onClick={onBack}>Back to Dashboard</button>
+        </div>
+      )}
+    </main>
   );
 }

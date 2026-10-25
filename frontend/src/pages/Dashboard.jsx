@@ -1,104 +1,123 @@
-// Dashboard - summary cards and the table of leads, highest score first.
+// Dashboard - summary numbers and the table of leads, most important first.
+// On phones the table turns into cards (see .table.responsive in index.css).
 
 import { useEffect, useState } from "react";
 import { api } from "../api";
-import { PriorityBadge, StatusBadge, ScoreBar, IntentTags } from "../components/Badges";
+import { ChanceBar, Channel, Icon, PriorityBadge, Spinner, StatusBadge, Tags } from "../components/ui";
 
-function StatCard({ label, value, tone = "text-navy" }) {
-  return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-      <p className="text-sm text-slate-500">{label}</p>
-      <p className={`mt-1 text-3xl font-bold ${tone}`}>{value}</p>
-    </div>
-  );
-}
+const FINISHED = ["Converted", "Not Converted"];
 
-export default function Dashboard({ options, onOpenLead, onAddLead }) {
-  const [leads, setLeads] = useState([]);
-  const [stats, setStats] = useState(null);
+export default function Dashboard({ onOpenLead, onAddLead, onConnect, onFollowups }) {
+  const [leads, setLeads] = useState(null);
   const [followupCount, setFollowupCount] = useState(0);
-  const [status, setStatus] = useState("");
+  const [filter, setFilter] = useState("active");
   const [search, setSearch] = useState("");
   const [error, setError] = useState("");
+  const [loadedAt, setLoadedAt] = useState(null);
 
-  // Load leads again whenever the status filter changes
   useEffect(() => {
-    Promise.all([api.getLeads(status), api.getAnalytics(), api.getFollowups()])
-      .then(([leadList, analytics, followups]) => {
-        setLeads(leadList);
-        setStats(analytics);
-        setFollowupCount(followups.length);
-        setError("");
-      })
+    Promise.all([api.getLeads(), api.getFollowups()])
+      .then(([list, due]) => { setLeads(list); setFollowupCount(due.length); setLoadedAt(new Date()); })
       .catch((err) => setError(err.message));
-  }, [status]);
+  }, []);
 
-  const shown = leads.filter((l) => l.name.toLowerCase().includes(search.toLowerCase()));
+  if (error) return <main className="page"><div className="alert alert-error">{Icon.alert()}<span>{error}</span></div></main>;
+  if (!leads) return <div className="page-loading"><Spinner />Loading leads…</div>;
+
+  const finished = leads.filter((l) => FINISHED.includes(l.status));
+  const converted = leads.filter((l) => l.status === "Converted");
+  const weekAgo = Date.now() - 7 * 86400000;
+  const thisWeek = leads.filter((l) => new Date(l.created_at).getTime() >= weekAgo).length;
+
+  const q = search.trim().toLowerCase();
+  const rows = leads.filter((l) => {
+    if (filter === "active" && FINISHED.includes(l.status)) return false;
+    if (filter !== "all" && filter !== "active" && l.status !== filter) return false;
+    return !q || `${l.name} ${l.phone} ${l.interested_in || ""} ${l.channel}`.toLowerCase().includes(q);
+  });
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
 
   return (
-    <div className="space-y-6">
-      {error && <p className="rounded-md bg-red-50 px-4 py-3 text-red-700">{error}</p>}
-
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Total leads" value={stats?.total_leads ?? "-"} />
-        <StatCard label="High priority" value={stats?.by_priority.HIGH ?? "-"} tone="text-brand-green" />
-        <StatCard label="Need follow-up now" value={followupCount} tone="text-brand-orange" />
-        <StatCard label="Conversion rate"
-          value={stats?.conversion_rate != null ? `${Math.round(stats.conversion_rate * 100)}%` : "-"} />
+    <main className="page">
+      <div className="page-head">
+        <div>
+          <h1>Dashboard</h1>
+          <p>{greeting}. Here are the leads worth your time today.</p>
+        </div>
+        <p className="small muted">Last updated {loadedAt.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" })} · {loadedAt.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" })}</p>
       </div>
 
-      <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
-        <div className="flex flex-wrap items-center gap-3 border-b border-slate-200 p-4">
-          <h2 className="mr-auto text-lg font-bold text-navy">Leads (most important first)</h2>
-          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name..."
-            className="rounded-md border border-slate-300 px-3 py-1.5 text-sm" />
-          <select value={status} onChange={(e) => setStatus(e.target.value)}
-            className="rounded-md border border-slate-300 px-3 py-1.5 text-sm">
-            <option value="">All statuses</option>
-            {options.statuses.map((s) => <option key={s}>{s}</option>)}
-          </select>
-          <button onClick={onAddLead} className="rounded-md bg-navy px-4 py-1.5 text-sm font-semibold text-white hover:bg-navy/90">
-            + Add lead
-          </button>
+      <section className="card stats" aria-label="Summary">
+        <div className="stat"><p className="stat-label">Total leads</p><p className="stat-value num">{leads.length}</p><p className="stat-note">+{thisWeek} this week</p></div>
+        <div className="stat"><p className="stat-label">High priority</p><p className="stat-value num text-high">{leads.filter((l) => l.priority === "HIGH").length}</p><p className="stat-note">Most likely to buy</p></div>
+        <div className="stat"><p className="stat-label">Need follow-up now</p><p className="stat-value num text-med">{followupCount}</p>
+          <button type="button" className="btn-link stat-note" onClick={onFollowups}>Open follow-ups</button></div>
+        <div className="stat"><p className="stat-label">Conversion rate</p><p className="stat-value num">{finished.length ? `${Math.round(converted.length / finished.length * 100)}%` : "—"}</p><p className="stat-note">Of finished leads</p></div>
+      </section>
+
+      <section className="card" aria-labelledby="leads-title">
+        <div className="card-head">
+          <h2 id="leads-title">Leads (most important first)</h2>
+          <div className="row toolbar" style={{ gap: 10 }}>
+            <label className="search">
+              {Icon.search()}<span className="sr-only">Search leads</span>
+              <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, phone or product" />
+            </label>
+            <label className="row small muted" style={{ gap: 8 }}>Status
+              <select className="select" value={filter} onChange={(e) => setFilter(e.target.value)} style={{ width: "auto", minHeight: 40 }}>
+                <option value="active">Open leads</option>
+                <option value="all">All statuses</option>
+                <option>New</option><option>Contacted</option><option>Converted</option><option>Not Converted</option>
+              </select>
+            </label>
+            <button type="button" className="btn btn-primary" style={{ minHeight: 40 }} onClick={onAddLead}>{Icon.plus()}Add lead</button>
+          </div>
         </div>
 
-        {shown.length === 0 ? (
-          <p className="p-8 text-center text-slate-500">No leads yet. Click “+ Add lead” to create one.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-                <tr>
-                  <th className="px-4 py-3">Name</th>
-                  <th className="px-4 py-3">Channel</th>
-                  <th className="px-4 py-3">Interested in</th>
-                  <th className="px-4 py-3">Chance</th>
-                  <th className="px-4 py-3">Priority</th>
-                  <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3">Why</th>
-                </tr>
-              </thead>
-              <tbody>
-                {shown.map((lead) => (
-                  <tr key={lead.id} onClick={() => onOpenLead(lead.id)}
-                    className="cursor-pointer border-t border-slate-100 hover:bg-navy-light">
-                    <td className="px-4 py-3">
-                      <p className="font-semibold">{lead.name}</p>
-                      <div className="mt-1"><IntentTags tags={lead.intent_tags} /></div>
-                    </td>
-                    <td className="px-4 py-3">{lead.channel}</td>
-                    <td className="px-4 py-3">{lead.interested_in || "-"}</td>
-                    <td className="px-4 py-3"><ScoreBar score={lead.score} priority={lead.priority} /></td>
-                    <td className="px-4 py-3"><PriorityBadge priority={lead.priority} manual={Boolean(lead.priority_override)} /></td>
-                    <td className="px-4 py-3"><StatusBadge status={lead.status} /></td>
-                    <td className="max-w-xs px-4 py-3 text-xs text-slate-500">{lead.reasons}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        {leads.length === 0 ? (
+          <div className="empty">
+            {Icon.inbox()}
+            <p className="empty-title">No leads yet.</p>
+            <p>Connect WhatsApp or share your enquiry form. New enquiries will appear here automatically.</p>
+            <div className="row" style={{ justifyContent: "center", marginTop: 4 }}>
+              <button type="button" className="btn btn-primary" onClick={onConnect}>Connect channels</button>
+              <button type="button" className="btn btn-outline" onClick={onAddLead}>Add a lead by hand</button>
+            </div>
           </div>
+        ) : (
+          <>
+            <div className="table-wrap">
+              <table className="table responsive">
+                <thead>
+                  <tr><th scope="col">Name</th><th scope="col">Channel</th><th scope="col">Interested in</th><th scope="col" style={{ width: 160 }}>Chance</th><th scope="col">Priority</th><th scope="col">Status</th><th scope="col">Why</th></tr>
+                </thead>
+                <tbody>
+                  {rows.map((l) => (
+                    <tr key={l.id}>
+                      <td className="td-name">
+                        <button type="button" className="lead-link" onClick={() => onOpenLead(l.id)}>{l.name}</button>
+                        <div style={{ marginTop: 6 }}><Tags tags={l.intent_tags} /></div>
+                      </td>
+                      <td data-label="Channel"><Channel name={l.channel} /></td>
+                      <td data-label="Interested in" className="nowrap">{l.interested_in || <span className="muted">—</span>}</td>
+                      <td data-label="Chance"><ChanceBar score={l.score} priority={l.priority} /></td>
+                      <td data-label="Priority"><PriorityBadge priority={l.priority} manual={Boolean(l.priority_override)} /></td>
+                      <td data-label="Status"><StatusBadge status={l.status} /></td>
+                      <td className="why">{l.reasons}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {rows.length === 0 && <p className="empty">No leads match your search.</p>}
+            <div className="card-foot">
+              <span>Showing {rows.length} of {leads.length} leads{filter === "active" && finished.length ? " · finished leads hidden" : ""}</span>
+              <span>✎ = priority set by hand</span>
+            </div>
+          </>
         )}
-      </div>
-    </div>
+      </section>
+    </main>
   );
 }

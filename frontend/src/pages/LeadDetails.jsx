@@ -1,68 +1,63 @@
-// Lead Details - everything about one lead: score, reasons, message, status buttons, edit, delete.
+// Lead Details - everything about one lead: chance and why, the customer's messages,
+// the drafted follow-up (send on WhatsApp), priority override, status, edit and delete.
 
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import LeadForm from "../components/LeadForm";
-import { PriorityBadge, StatusBadge, ScoreBar, ScoreBreakdown, IntentTags } from "../components/Badges";
+import {
+  BigBar, Breakdown, Button, Icon, PriorityBadge, Spinner, StatusBadge, Tags, copyText, niceDate, pct, toast,
+} from "../components/ui";
+
+const PRIORITIES = ["Automatic", "HIGH", "MEDIUM", "LOW"];
+const STATUSES = ["New", "Contacted", "Converted", "Not Converted"];
 
 export default function LeadDetails({ id, options, onBack }) {
   const [lead, setLead] = useState(null);
-  const [message, setMessage] = useState("");
+  const [draft, setDraft] = useState("");
   const [editing, setEditing] = useState(false);
-  const [notice, setNotice] = useState("");
-  const [error, setError] = useState("");
-  const [sendError, setSendError] = useState("");
   const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState("");
+  const [sendError, setSendError] = useState("");
+  const [error, setError] = useState("");
 
   async function load() {
     try {
       const [data, msg] = await Promise.all([api.getLead(id), api.getMessage(id)]);
       setLead(data);
-      setMessage(msg.message);
+      setDraft(msg.message);
     } catch (err) {
       setError(err.message);
     }
   }
   useEffect(() => { load(); }, [id]);
 
-  async function changeStatus(status) {
-    setLead(await api.setStatus(id, status));          // PATCH /leads/{id}/status
-    setNotice(`Status changed to ${status}`);
+  if (error) {
+    return (
+      <main className="page">
+        <div className="card empty"><p className="empty-title">Lead not found</p><p>{error}</p>
+          <button type="button" className="btn btn-outline" onClick={onBack}>Back to leads</button></div>
+      </main>
+    );
   }
+  if (!lead) return <div className="page-loading"><Spinner />Loading lead…</div>;
 
-  async function choosePriority(priority) {
-    setLead(await api.setPriority(id, priority));     // PATCH /leads/{id}/priority
-    setNotice(priority ? `Priority set to ${priority} by you. It stays until you choose Automatic.`
-                       : "Priority is automatic again (decided by the model).");
-  }
+  const chance = pct(lead.score);
+  const messages = (lead.customer_message || "").split("\n").map((m) => m.trim()).filter(Boolean);
+  const facts = [
+    ["Phone", lead.phone && lead.phone !== "-" ? lead.phone : "—"], ["Email", lead.email || "—"], ["Came from", lead.channel],
+    ["Interested in", lead.interested_in || "—"], ["Customer type", lead.customer_type || "—"], ["Last activity", lead.last_activity || "—"],
+    ["Website visits", lead.website_visits ?? "—"], ["Time on website", lead.time_on_website ?? "—"], ["Added on", niceDate(lead.created_at)],
+  ];
+  const canWhatsApp = /\d{10}/.test((lead.phone || "").replace(/\D/g, ""));
 
-  async function saveEdit(changes) {
-    const updated = await api.updateLead(id, changes);  // PUT /leads/{id} -> re-scored
-    setLead(updated);
-    setMessage((await api.getMessage(id)).message);
-    setEditing(false);
-    setNotice(`Saved. New score: ${Math.round(updated.score * 100)}% (${updated.priority})`);
-  }
-
-  async function remove() {
-    if (!window.confirm(`Delete ${lead.name}? This cannot be undone.`)) return;
-    await api.deleteLead(id);                           // DELETE /leads/{id}
-    onBack();
-  }
-
-  function copyMessage() {
-    navigator.clipboard.writeText(message);
-    setNotice("Message copied");
-  }
-
-  // Sends the message straight to the customer's WhatsApp through Twilio (backend: POST /leads/{id}/whatsapp)
-  async function sendOnWhatsapp() {
+  async function send() {
+    setSent(""); setSendError("");
+    if (!draft.trim()) { setSendError("The message is empty. Write something before sending."); return; }
     setSending(true);
-    setSendError("");
     try {
-      const result = await api.sendWhatsapp(id, message);
+      const result = await api.sendWhatsapp(id, draft);           // POST /leads/{id}/whatsapp
       setLead(result.lead);
-      setNotice(`Sent on WhatsApp to ${result.to.replace("whatsapp:", "")}`);
+      setSent(`Sent to ${result.to.replace("whatsapp:", "")}. Status: ${result.lead.status}.`);
     } catch (err) {
       setSendError(err.message);
     } finally {
@@ -70,122 +65,142 @@ export default function LeadDetails({ id, options, onBack }) {
     }
   }
 
-  // Opens WhatsApp with the message ready to send (the salesperson still presses Send)
-  const whatsappLink = lead
-    ? `https://wa.me/${lead.phone.replace("+", "").replace(/^(\d{10})$/, "91$1")}?text=${encodeURIComponent(message)}`
-    : "#";
+  async function choosePriority(p) {
+    const value = p === "Automatic" ? null : p;
+    setLead(await api.setPriority(id, value));                  // PATCH /leads/{id}/priority
+    toast("success", value ? `Priority set to ${value}` : "Priority set back to automatic",
+      value ? "Marked with ✎ in your lead list." : "The model decides again.");
+  }
 
-  if (error) return <p className="rounded-md bg-red-50 px-4 py-3 text-red-700">{error}</p>;
-  if (!lead) return <p>Loading...</p>;
+  async function chooseStatus(s) {
+    setLead(await api.setStatus(id, s));                        // PATCH /leads/{id}/status
+    toast("success", `Status updated to ${s}`,
+      s === "Converted" || s === "Not Converted" ? "Thanks — the model will learn from this lead." : "");
+  }
 
-  const fact = (label, value) => (
-    <div><dt className="text-xs uppercase text-slate-500">{label}</dt><dd className="font-medium">{value ?? "-"}</dd></div>
-  );
+  async function saveEdit(changes) {
+    const updated = await api.updateLead(id, changes);          // PUT /leads/{id} -> scored again
+    setLead(updated);
+    setDraft((await api.getMessage(id)).message);
+    setEditing(false);
+    toast("success", "Lead saved", `New chance: ${pct(updated.score)}% (${updated.priority})`);
+  }
+
+  async function remove() {
+    if (!window.confirm(`Delete ${lead.name}? This cannot be undone.`)) return;
+    await api.deleteLead(id);                                   // DELETE /leads/{id}
+    toast("success", `${lead.name} deleted`);
+    onBack();
+  }
+
+  const openWhatsApp = () => {
+    let phone = lead.phone.replace(/\D/g, "");
+    if (phone.length === 10) phone = "91" + phone;
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(draft)}`, "_blank", "noopener");
+    if (lead.status === "New") chooseStatus("Contacted");
+  };
+
+  if (editing) {
+    return (
+      <main className="page page-narrow">
+        <button type="button" className="back-link btn-link" onClick={() => setEditing(false)}>{Icon.back()}Back to {lead.name}</button>
+        <LeadForm options={options} initial={lead} title={`Edit ${lead.name}`} submitLabel="Save changes"
+          onSubmit={saveEdit} onCancel={() => setEditing(false)} />
+      </main>
+    );
+  }
 
   return (
-    <div className="space-y-6">
-      <button onClick={onBack} className="text-sm font-semibold text-navy">← Back to leads</button>
-      {notice && <p className="rounded-md bg-green-50 px-4 py-2 text-sm text-green-800">{notice}</p>}
+    <main className="page">
+      <button type="button" className="back-link btn-link" onClick={onBack}>{Icon.back()}Back to leads</button>
 
-      {editing ? (
-        <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="mb-4 text-xl font-bold text-navy">Edit {lead.name}</h2>
-          <LeadForm options={options} initial={lead} submitLabel="Save changes" onSubmit={saveEdit} onCancel={() => setEditing(false)} />
-        </div>
-      ) : (
-        <div className="grid gap-6 lg:grid-cols-3">
-          {/* Left: lead information */}
-          <div className="space-y-5 rounded-lg border border-slate-200 bg-white p-6 shadow-sm lg:col-span-2">
-            <div className="flex flex-wrap items-center gap-3">
-              <h2 className="mr-auto text-2xl font-bold text-navy">{lead.name}</h2>
-              <PriorityBadge priority={lead.priority} manual={Boolean(lead.priority_override)} />
-              <StatusBadge status={lead.status} />
+      <div className="split">
+        <section className="card lead-card main" aria-labelledby="lead-name">
+          <div className="row-between" style={{ alignItems: "flex-start" }}>
+            <div className="row" style={{ gap: 10 }}>
+              <h1 id="lead-name">{lead.name}</h1>
+              <span className="row"><PriorityBadge priority={lead.priority} manual={Boolean(lead.priority_override)} /><StatusBadge status={lead.status} /></span>
             </div>
-            <ScoreBar score={lead.score} priority={lead.priority} />
-            <ScoreBreakdown lead={lead} />
-            <IntentTags tags={lead.intent_tags} />
-            <p className="text-sm"><span className="font-semibold">Why: </span>{lead.reasons}</p>
-            {lead.customer_message && (
-              <div>
-                <p className="text-xs uppercase text-slate-500">Customer's message</p>
-                <blockquote className="mt-1 rounded-md border-l-4 border-navy/30 bg-slate-50 px-4 py-3 text-sm italic">
-                  “{lead.customer_message}”
-                </blockquote>
-              </div>
-            )}
-            <dl className="grid gap-4 sm:grid-cols-3">
-              {fact("Phone", lead.phone)}
-              {fact("Email", lead.email)}
-              {fact("Came from", lead.channel)}
-              {fact("Interested in", lead.interested_in)}
-              {fact("Customer type", lead.customer_type)}
-              {fact("Last activity", lead.last_activity)}
-              {fact("Website visits", lead.website_visits)}
-              {fact("Time on website", lead.time_on_website)}
-              {fact("Added on", lead.created_at.replace("T", " "))}
-            </dl>
-            <div className="flex flex-wrap gap-2 border-t border-slate-100 pt-4">
-              <button onClick={() => setEditing(true)} className="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-slate-100">Edit</button>
-              <button onClick={remove} className="rounded-md border border-red-300 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-50">Delete</button>
+            <div className="row">
+              <button type="button" className="btn btn-outline btn-sm" onClick={() => setEditing(true)}>{Icon.edit()}Edit</button>
+              <button type="button" className="btn btn-danger-outline btn-sm" onClick={remove}>{Icon.trash()}Delete</button>
             </div>
           </div>
 
-          {/* Right: message and status */}
-          <div className="space-y-5">
-            <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-              <h3 className="mb-2 font-bold text-navy">Follow-up message</h3>
-              <p className="mb-2 text-xs text-slate-500">Drafted by the Message Agent. Edit it before sending.</p>
-              <textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={6}
-                className="w-full rounded-md border border-slate-300 p-3 text-sm" />
-              <div className="mt-3 flex flex-wrap gap-2">
-                <button onClick={sendOnWhatsapp} disabled={sending || !message.trim()}
-                  className="rounded-md bg-brand-green px-3 py-1.5 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50">
-                  {sending ? "Sending..." : "Send on WhatsApp"}
-                </button>
-                <button onClick={copyMessage} className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold hover:bg-slate-100">Copy</button>
-                <a href={whatsappLink} target="_blank" rel="noreferrer" onClick={() => lead.status === "New" && changeStatus("Contacted")}
-                  className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold hover:bg-slate-100">
-                  Open in WhatsApp app
-                </a>
-              </div>
-              {sendError && <p className="mt-2 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">{sendError}</p>}
+          <div className="stack" style={{ gap: 8 }}>
+            <div className="big-chance">
+              <span className="muted" style={{ fontWeight: 500 }}>Chance of buying</span>
+              <strong className={lead.priority === "HIGH" ? "text-high" : lead.priority === "MEDIUM" ? "text-med" : ""}>{chance}%</strong>
             </div>
+            <BigBar score={lead.score} priority={lead.priority} />
+            <Breakdown lead={lead} />
+          </div>
 
-            <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-              <h3 className="mb-1 font-bold text-navy">Priority</h3>
-              <p className="mb-3 text-xs text-slate-500">
+          <Tags tags={lead.intent_tags} large />
+          <p><strong>Why:</strong> <span style={{ color: "var(--ink-2)" }}>{lead.reasons}</span></p>
+
+          <div className="messages">
+            <h2 style={{ fontSize: 15 }}>Customer's messages on {lead.channel}</h2>
+            {messages.length
+              ? messages.map((m, i) => <div key={i} className="bubble">{m}</div>)
+              : <p className="muted">No messages yet.</p>}
+          </div>
+
+          <dl className="facts">
+            {facts.map(([k, v]) => <div key={k}><dt>{k}</dt><dd>{v}</dd></div>)}
+          </dl>
+        </section>
+
+        <div className="side">
+          <section className="card card-pad stack" style={{ gap: 12 }} aria-labelledby="fu-title">
+            <div>
+              <h2 id="fu-title">Follow-up message</h2>
+              <p className="card-sub">Drafted by the Message Agent — edit before sending</p>
+            </div>
+            <label className="field"><span className="small" style={{ fontWeight: 500, color: "var(--ink-2)" }}>Message</span>
+              <textarea className="textarea" rows={7} value={draft} onChange={(e) => setDraft(e.target.value)} />
+            </label>
+            <div className="row">
+              {canWhatsApp && (
+                <Button className="btn btn-success" loading={sending} loadingText="Sending…" onClick={send}>{Icon.send()}Send on WhatsApp</Button>
+              )}
+              <button type="button" className="btn btn-outline" onClick={() => { copyText(draft); toast("success", "Message copied"); }}>Copy</button>
+              {canWhatsApp && (
+                <button type="button" className="btn btn-outline" onClick={openWhatsApp}>Open in WhatsApp app {Icon.ext()}</button>
+              )}
+            </div>
+            {sent && <div className="alert alert-success" role="status">{Icon.check()}<span><strong>{sent}</strong></span></div>}
+            {sendError && <div className="alert alert-error" role="alert">{Icon.alert()}<span><strong>Couldn't send.</strong> {sendError}</span></div>}
+          </section>
+
+          <section className="card card-pad stack" style={{ gap: 12 }} aria-labelledby="pr-title">
+            <div>
+              <h2 id="pr-title">Priority</h2>
+              <p className="card-sub">
                 {lead.priority_override
-                  ? `Set by you: ${lead.priority_override}. The model would say ${Math.round(lead.score * 100)}%.`
+                  ? `Set by you. The model alone would say ${chance}%.`
                   : "Decided by the model. Know this customer better? Set it yourself."}
               </p>
-              <div className="grid grid-cols-4 gap-2">
-                {[null, "HIGH", "MEDIUM", "LOW"].map((p) => {
-                  const active = (lead.priority_override || null) === p;
-                  return (
-                    <button key={p || "auto"} onClick={() => choosePriority(p)} disabled={active}
-                      className="rounded-md border border-slate-300 px-2 py-2 text-xs font-semibold hover:bg-navy-light disabled:bg-navy disabled:text-white">
-                      {p || "Automatic"}
-                    </button>
-                  );
-                })}
-              </div>
             </div>
+            <div className="seg" role="group" aria-label="Priority">
+              {PRIORITIES.map((p) => {
+                const current = (lead.priority_override || "Automatic") === p;
+                return <button key={p} type="button" aria-pressed={current} onClick={() => !current && choosePriority(p)}>{p}</button>;
+              })}
+            </div>
+          </section>
 
-            <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-              <h3 className="mb-3 font-bold text-navy">Update status</h3>
-              <div className="grid grid-cols-2 gap-2">
-                {options.statuses.map((s) => (
-                  <button key={s} onClick={() => changeStatus(s)} disabled={lead.status === s}
-                    className="rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold hover:bg-navy-light disabled:bg-navy disabled:text-white">
-                    {s}
-                  </button>
-                ))}
-              </div>
-              <p className="mt-3 text-xs text-slate-500">Marking Converted / Not Converted gives the model new data for retraining.</p>
+          <section className="card card-pad stack" style={{ gap: 12 }} aria-labelledby="st-title">
+            <h2 id="st-title">Update status</h2>
+            <div className="choice-grid" role="group" aria-label="Status">
+              {STATUSES.map((s) => (
+                <button key={s} type="button" aria-pressed={lead.status === s} onClick={() => lead.status !== s && chooseStatus(s)}>{s}</button>
+              ))}
             </div>
-          </div>
+            <p className="small muted">Marking Converted / Not Converted teaches the model.</p>
+          </section>
         </div>
-      )}
-    </div>
+      </div>
+    </main>
   );
 }
